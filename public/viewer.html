@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>claude-watch · 세션</title>
+<style>
+  :root { --bg:#faf9f7; --card:#fff; --line:#ececec; --muted:#9a9a9a; --ink:#1c1c1e; --accent:#b4267a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.7 -apple-system,system-ui,"Apple SD Gothic Neo",sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:rgba(250,249,247,.9);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; gap:10px; align-items:center; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header .status { font-size:12px; color:var(--muted); margin-left:auto; display:flex; align-items:center; gap:6px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#bbb; }
+  .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
+  main { max-width:840px; margin:0 auto; padding:24px 20px 120px; }
+  .ev { margin:14px 0; }
+
+  /* 사용자 / AI 텍스트 */
+  .bubble { padding:12px 16px; border-radius:14px; white-space:pre-wrap; word-break:break-word; }
+  .user .bubble { background:#eef3ff; border:1px solid #dde6ff; }
+  .assistant .bubble { background:transparent; padding:4px 2px; }
+  .role { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; }
+
+  /* thinking (기본 접힘) */
+  details.think { margin:8px 0; }
+  details.think summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
+  details.think .body { white-space:pre-wrap; color:#777; font-size:13px; background:#f3f1ee;
+    border-left:3px solid #ddd; padding:10px 12px; border-radius:6px; margin-top:6px; }
+
+  /* 도구 카드 */
+  .tool { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .tool .head { display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:13px; }
+  .tool .head .name { font-weight:600; }
+  .tool .head .path { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tool.err { border-color:#f3c2c2; }
+  .badge { margin-left:auto; font-size:11px; padding:2px 8px; border-radius:20px; background:#eef7f0; color:#2b9d5a; }
+  .badge.err { background:#fdeaea; color:#d33; }
+  pre.code { margin:0; padding:12px 14px; background:#1e1e22; color:#e6e6e6; overflow:auto;
+    font:12.5px/1.55 ui-monospace,Menlo,monospace; }
+  .desc { padding:6px 14px 10px; color:var(--muted); font-size:12.5px; }
+
+  /* diff */
+  .diff { font:12.5px/1.55 ui-monospace,Menlo,monospace; }
+  .diff .l { padding:1px 14px; white-space:pre-wrap; word-break:break-word; }
+  .diff .del { background:#fdecea; color:#9a2b1e; }
+  .diff .add { background:#dcf5e3; color:#1c6b3a; }
+
+  details.result { border-top:1px dashed var(--line); }
+  details.result summary { cursor:pointer; padding:8px 14px; font-size:12px; color:var(--muted); list-style:none; }
+  details.result pre { margin:0; padding:0 14px 12px; max-height:320px; overflow:auto;
+    white-space:pre-wrap; font:12px/1.5 ui-monospace,Menlo,monospace; color:#555; }
+  summary::-webkit-details-marker { display:none; }
+  .clip { max-height:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🦞 claude-watch</h1>
+  <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
+</header>
+<main id="feed"></main>
+
+<script>
+const SESSION = "__SESSION_ID__";
+const feed = document.getElementById("feed");
+const dot = document.getElementById("dot");
+const stat = document.getElementById("stat");
+
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const fileName = (p) => String(p || "").split("/").slice(-2).join("/");
+
+// 이벤트 한 개 → DOM
+function renderEvent(e) {
+  const wrap = document.createElement("div");
+  wrap.className = "ev " + e.kind;
+
+  if (e.kind === "user_text") {
+    // 거대한 주입 컨텍스트는 접어둠
+    const long = (e.text || "").length > 1200;
+    wrap.innerHTML = `<div class="role">🧑 사용자</div>` +
+      (long
+        ? `<details><summary class="role" style="cursor:pointer">🧑 사용자 (긴 입력 펼치기)</summary><div class="bubble">${esc(e.text)}</div></details>`
+        : `<div class="bubble">${esc(e.text)}</div>`);
+    return wrap;
+  }
+
+  if (e.kind === "assistant_text") {
+    wrap.innerHTML = `<div class="bubble">${esc(e.text)}</div>`;
+    return wrap;
+  }
+
+  if (e.kind === "thinking") {
+    wrap.innerHTML = `<details class="think"><summary>💭 생각 펼치기</summary><div class="body">${esc(e.text)}</div></details>`;
+    return wrap;
+  }
+
+  if (e.kind === "image") {
+    wrap.innerHTML = `<div class="bubble" style="color:var(--muted)">🖼️ 첨부 이미지</div>`;
+    return wrap;
+  }
+
+  if (e.kind === "tool_use") {
+    wrap.appendChild(renderTool(e));
+    return wrap;
+  }
+  return wrap;
+}
+
+function resultBlock(e) {
+  if (!e.result) return "";
+  const label = e.isError ? "⚠️ 오류 결과 펼치기" : "결과 펼치기";
+  return `<details class="result"><summary>${label}</summary><pre>${esc(e.result)}</pre></details>`;
+}
+
+function badge(e) {
+  if (e.result == null) return "";
+  return e.isError ? `<span class="badge err">실패</span>` : `<span class="badge">완료</span>`;
+}
+
+function renderTool(e) {
+  const card = document.createElement("div");
+  card.className = "tool" + (e.isError ? " err" : "");
+  const i = e.input || {};
+
+  if (e.name === "Bash") {
+    card.innerHTML =
+      `<div class="head"><span>⚡</span><span class="name">Bash</span>${badge(e)}</div>` +
+      `<pre class="code">$ ${esc(i.command)}</pre>` +
+      (i.description ? `<div class="desc">${esc(i.description)}</div>` : "") +
+      resultBlock(e);
+    return card;
+  }
+
+  if (e.name === "Edit") {
+    const del = String(i.old_string || "").split("\n").map(l => `<div class="l del">- ${esc(l)}</div>`).join("");
+    const add = String(i.new_string || "").split("\n").map(l => `<div class="l add">+ ${esc(l)}</div>`).join("");
+    card.innerHTML =
+      `<div class="head"><span>📝</span><span class="name">파일 수정</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>` +
+      `<div class="diff">${del}${add}</div>` + resultBlock(e);
+    return card;
+  }
+
+  if (e.name === "Write") {
+    card.innerHTML =
+      `<div class="head"><span>📄</span><span class="name">파일 생성</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>` +
+      `<pre class="code">${esc(String(i.content || "").slice(0, 4000))}</pre>` + resultBlock(e);
+    return card;
+  }
+
+  if (e.name === "Read") {
+    card.innerHTML = `<div class="head"><span>📖</span><span class="name">읽기</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`;
+    return card;
+  }
+
+  // 그 외 도구는 일반 카드로 폴백
+  card.innerHTML =
+    `<div class="head"><span>🔧</span><span class="name">${esc(e.name)}</span>${badge(e)}</div>` +
+    `<pre class="code">${esc(JSON.stringify(i, null, 2).slice(0, 1500))}</pre>` + resultBlock(e);
+  return card;
+}
+
+function renderAll(events) {
+  const frag = document.createDocumentFragment();
+  for (const e of events) frag.appendChild(renderEvent(e));
+  feed.replaceChildren(frag);
+}
+
+// SSE 연결
+const es = new EventSource(`/events/${SESSION}`);
+es.addEventListener("snapshot", (m) => {
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 200;
+  renderAll(JSON.parse(m.data));
+  dot.classList.add("live");
+  stat.textContent = "실시간 연결됨";
+  if (nearBottom) window.scrollTo(0, document.body.scrollHeight);
+});
+es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
+</script>
+</body>
+</html>
