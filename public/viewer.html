@@ -4,34 +4,35 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>claude-watch · 세션</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root { --bg:#faf9f7; --card:#fff; --line:#ececec; --muted:#9a9a9a; --ink:#1c1c1e; --accent:#b4267a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
     font:15px/1.7 -apple-system,system-ui,"Apple SD Gothic Neo",sans-serif; }
-  header { position:sticky; top:0; z-index:5; background:rgba(250,249,247,.9);
-    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; gap:10px; align-items:center; }
+  header { position:sticky; top:0; z-index:5; background:rgba(250,249,247,.94);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:10px 20px; }
+  .topline { display:flex; gap:10px; align-items:center; }
   header h1 { font-size:15px; margin:0; font-weight:600; }
-  header .status { font-size:12px; color:var(--muted); margin-left:auto; display:flex; align-items:center; gap:6px; }
+  .status { font-size:12px; color:var(--muted); margin-left:auto; display:flex; align-items:center; gap:6px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#bbb; }
   .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
-  main { max-width:840px; margin:0 auto; padding:24px 20px 120px; }
+  .tabs { display:flex; gap:4px; margin-top:10px; }
+  .tabs button { border:none; background:transparent; padding:8px 14px; font-size:13.5px; cursor:pointer;
+    color:var(--muted); border-radius:8px 8px 0 0; font-weight:600; }
+  .tabs button.on { color:var(--accent); background:var(--card); border:1px solid var(--line); border-bottom:1px solid var(--card); margin-bottom:-1px; }
+  main { max-width:880px; margin:0 auto; padding:24px 20px 120px; }
   .ev { margin:14px 0; }
 
-  /* 사용자 / AI 텍스트 */
   .bubble { padding:12px 16px; border-radius:14px; white-space:pre-wrap; word-break:break-word; }
   .user .bubble { background:#eef3ff; border:1px solid #dde6ff; }
   .assistant .bubble { background:transparent; padding:4px 2px; }
   .role { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; }
-
-  /* thinking (기본 접힘) */
-  details.think { margin:8px 0; }
   details.think summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
   details.think .body { white-space:pre-wrap; color:#777; font-size:13px; background:#f3f1ee;
     border-left:3px solid #ddd; padding:10px 12px; border-radius:6px; margin-top:6px; }
 
-  /* 도구 카드 */
-  .tool { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .tool { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:10px 0; }
   .tool .head { display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:13px; }
   .tool .head .name { font-weight:600; }
   .tool .head .path { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px;
@@ -42,141 +43,284 @@
   pre.code { margin:0; padding:12px 14px; background:#1e1e22; color:#e6e6e6; overflow:auto;
     font:12.5px/1.55 ui-monospace,Menlo,monospace; }
   .desc { padding:6px 14px 10px; color:var(--muted); font-size:12.5px; }
-
-  /* diff */
   .diff { font:12.5px/1.55 ui-monospace,Menlo,monospace; }
   .diff .l { padding:1px 14px; white-space:pre-wrap; word-break:break-word; }
   .diff .del { background:#fdecea; color:#9a2b1e; }
   .diff .add { background:#dcf5e3; color:#1c6b3a; }
-
   details.result { border-top:1px dashed var(--line); }
   details.result summary { cursor:pointer; padding:8px 14px; font-size:12px; color:var(--muted); list-style:none; }
   details.result pre { margin:0; padding:0 14px 12px; max-height:320px; overflow:auto;
     white-space:pre-wrap; font:12px/1.5 ui-monospace,Menlo,monospace; color:#555; }
   summary::-webkit-details-marker { display:none; }
-  .clip { max-height:none; }
+
+  /* 요약 탭 */
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 18px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px; text-align:center; }
+  .stat .n { font-size:22px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--muted); }
+  h3.sec { font-size:14px; margin:22px 0 8px; }
+  ol.prompts { padding-left:20px; } ol.prompts li { margin:4px 0; }
+  ul.files { list-style:none; padding:0; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
+  ul.files li { padding:3px 0; } ul.files .tag { font-size:10px; padding:1px 6px; border-radius:8px; margin-right:6px; }
+  .tag.new { background:#dcf5e3; color:#1c6b3a; } .tag.mod { background:#e6efff; color:#2b5f9d; }
+
+  .aibox { margin:14px 0; }
+  .aibtn { background:var(--accent); color:#fff; border:none; padding:9px 16px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; }
+  .aibtn:disabled { opacity:.5; cursor:wait; }
+  .aiout { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; white-space:pre-wrap; }
+  .mermaid { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; overflow:auto; }
+  .hint { color:var(--muted); font-size:12.5px; margin:6px 0 14px; }
+  .usage { margin-top:8px; font-size:12px; color:var(--muted); font-family:ui-monospace,Menlo,monospace; }
+  .usage b { color:var(--ink); font-weight:600; }
 </style>
 </head>
 <body>
 <header>
-  <h1>🦞 claude-watch</h1>
-  <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
+  <div class="topline">
+    <h1>🦞 claude-watch</h1>
+    <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
 </header>
-<main id="feed"></main>
+<main id="view"></main>
 
 <script>
 const SESSION = "__SESSION_ID__";
-const feed = document.getElementById("feed");
+let EVENTS = [];
+let TAB = "raw";
+const view = document.getElementById("view");
 const dot = document.getElementById("dot");
 const stat = document.getElementById("stat");
+let mermaidSeq = 0;
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const fileName = (p) => String(p || "").split("/").slice(-2).join("/");
+const base = (p) => String(p || "").split("/").pop();
+const topDir = (p) => { const parts = String(p||"").split("/").filter(Boolean); const i = parts.findIndex(x=>x==="src"||x==="lib"||x==="backend"||x==="public"||x==="app"); return i>=0 ? parts[i] : (parts.length>1?parts[parts.length-2]:"root"); };
 
-// 이벤트 한 개 → DOM
+// ── 탭 정의 ──────────────────────────────────────────────
+const TABS = [
+  { id: "raw",     label: "Raw 대화", render: renderRaw },
+  { id: "summary", label: "세션 요약", render: renderSummary },
+  { id: "diagram", label: "아키텍처/구조", render: renderDiagram },
+  { id: "diff",    label: "코드 변경", render: renderDiff },
+];
+function renderTabs() {
+  document.getElementById("tabs").innerHTML = TABS.map(t =>
+    `<button class="${t.id===TAB?'on':''}" data-tab="${t.id}">${t.label}</button>`).join("");
+  document.querySelectorAll("[data-tab]").forEach(b =>
+    b.onclick = () => { TAB = b.dataset.tab; renderTabs(); draw(); });
+}
+function draw() { TABS.find(t => t.id === TAB).render(); }
+
+// ── 탭1: Raw 대화 ────────────────────────────────────────
+function renderRaw() {
+  const frag = document.createDocumentFragment();
+  for (const e of EVENTS) frag.appendChild(renderEvent(e));
+  view.replaceChildren(frag);
+}
 function renderEvent(e) {
   const wrap = document.createElement("div");
   wrap.className = "ev " + e.kind;
-
   if (e.kind === "user_text") {
-    // 거대한 주입 컨텍스트는 접어둠
     const long = (e.text || "").length > 1200;
-    wrap.innerHTML = `<div class="role">🧑 사용자</div>` +
-      (long
-        ? `<details><summary class="role" style="cursor:pointer">🧑 사용자 (긴 입력 펼치기)</summary><div class="bubble">${esc(e.text)}</div></details>`
-        : `<div class="bubble">${esc(e.text)}</div>`);
-    return wrap;
-  }
-
-  if (e.kind === "assistant_text") {
+    wrap.innerHTML = long
+      ? `<details><summary class="role" style="cursor:pointer">🧑 사용자 (긴 입력 펼치기)</summary><div class="bubble">${esc(e.text)}</div></details>`
+      : `<div class="role">🧑 사용자</div><div class="bubble">${esc(e.text)}</div>`;
+  } else if (e.kind === "assistant_text") {
     wrap.innerHTML = `<div class="bubble">${esc(e.text)}</div>`;
-    return wrap;
-  }
-
-  if (e.kind === "thinking") {
+  } else if (e.kind === "thinking") {
     wrap.innerHTML = `<details class="think"><summary>💭 생각 펼치기</summary><div class="body">${esc(e.text)}</div></details>`;
-    return wrap;
-  }
-
-  if (e.kind === "image") {
+  } else if (e.kind === "image") {
     wrap.innerHTML = `<div class="bubble" style="color:var(--muted)">🖼️ 첨부 이미지</div>`;
-    return wrap;
-  }
-
-  if (e.kind === "tool_use") {
+  } else if (e.kind === "tool_use") {
     wrap.appendChild(renderTool(e));
-    return wrap;
   }
   return wrap;
 }
-
-function resultBlock(e) {
-  if (!e.result) return "";
-  const label = e.isError ? "⚠️ 오류 결과 펼치기" : "결과 펼치기";
-  return `<details class="result"><summary>${label}</summary><pre>${esc(e.result)}</pre></details>`;
+function badge(e){ if(e.result==null) return ""; return e.isError?`<span class="badge err">실패</span>`:`<span class="badge">완료</span>`; }
+function resultBlock(e){ if(!e.result) return ""; const l=e.isError?"⚠️ 오류 결과 펼치기":"결과 펼치기"; return `<details class="result"><summary>${l}</summary><pre>${esc(e.result)}</pre></details>`; }
+function editDiff(i){
+  const del = String(i.old_string||"").split("\n").map(l=>`<div class="l del">- ${esc(l)}</div>`).join("");
+  const add = String(i.new_string||"").split("\n").map(l=>`<div class="l add">+ ${esc(l)}</div>`).join("");
+  return `<div class="diff">${del}${add}</div>`;
 }
-
-function badge(e) {
-  if (e.result == null) return "";
-  return e.isError ? `<span class="badge err">실패</span>` : `<span class="badge">완료</span>`;
-}
-
 function renderTool(e) {
   const card = document.createElement("div");
   card.className = "tool" + (e.isError ? " err" : "");
   const i = e.input || {};
-
   if (e.name === "Bash") {
-    card.innerHTML =
-      `<div class="head"><span>⚡</span><span class="name">Bash</span>${badge(e)}</div>` +
-      `<pre class="code">$ ${esc(i.command)}</pre>` +
-      (i.description ? `<div class="desc">${esc(i.description)}</div>` : "") +
-      resultBlock(e);
-    return card;
-  }
-
-  if (e.name === "Edit") {
-    const del = String(i.old_string || "").split("\n").map(l => `<div class="l del">- ${esc(l)}</div>`).join("");
-    const add = String(i.new_string || "").split("\n").map(l => `<div class="l add">+ ${esc(l)}</div>`).join("");
-    card.innerHTML =
-      `<div class="head"><span>📝</span><span class="name">파일 수정</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>` +
-      `<div class="diff">${del}${add}</div>` + resultBlock(e);
-    return card;
-  }
-
-  if (e.name === "Write") {
-    card.innerHTML =
-      `<div class="head"><span>📄</span><span class="name">파일 생성</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>` +
-      `<pre class="code">${esc(String(i.content || "").slice(0, 4000))}</pre>` + resultBlock(e);
-    return card;
-  }
-
-  if (e.name === "Read") {
+    card.innerHTML = `<div class="head"><span>⚡</span><span class="name">Bash</span>${badge(e)}</div>`+
+      `<pre class="code">$ ${esc(i.command)}</pre>`+(i.description?`<div class="desc">${esc(i.description)}</div>`:"")+resultBlock(e);
+  } else if (e.name === "Edit") {
+    card.innerHTML = `<div class="head"><span>📝</span><span class="name">파일 수정</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+editDiff(i)+resultBlock(e);
+  } else if (e.name === "Write") {
+    card.innerHTML = `<div class="head"><span>📄</span><span class="name">파일 생성</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+`<pre class="code">${esc(String(i.content||"").slice(0,4000))}</pre>`+resultBlock(e);
+  } else if (e.name === "Read") {
     card.innerHTML = `<div class="head"><span>📖</span><span class="name">읽기</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`;
-    return card;
+  } else {
+    card.innerHTML = `<div class="head"><span>🔧</span><span class="name">${esc(e.name)}</span>${badge(e)}</div>`+`<pre class="code">${esc(JSON.stringify(i,null,2).slice(0,1500))}</pre>`+resultBlock(e);
   }
-
-  // 그 외 도구는 일반 카드로 폴백
-  card.innerHTML =
-    `<div class="head"><span>🔧</span><span class="name">${esc(e.name)}</span>${badge(e)}</div>` +
-    `<pre class="code">${esc(JSON.stringify(i, null, 2).slice(0, 1500))}</pre>` + resultBlock(e);
   return card;
 }
 
-function renderAll(events) {
-  const frag = document.createDocumentFragment();
-  for (const e of events) frag.appendChild(renderEvent(e));
-  feed.replaceChildren(frag);
+// ── 변경 파일 집계 (요약·다이어그램·diff 공용) ──────────────
+function changedFiles() {
+  const map = new Map(); // path -> {kind:'new'|'mod', edits:[], content}
+  for (const e of EVENTS) {
+    if (e.kind !== "tool_use") continue;
+    const f = e.input?.file_path; if (!f) continue;
+    if (e.name === "Write") map.set(f, { kind: "new", edits: [], content: e.input.content || "" });
+    else if (e.name === "Edit") {
+      const cur = map.get(f) || { kind: "mod", edits: [] };
+      cur.edits.push(e.input);
+      map.set(f, cur);
+    }
+  }
+  return map;
 }
 
-// SSE 연결
+// ── 탭2: 세션 요약 ───────────────────────────────────────
+function renderSummary() {
+  const prompts = EVENTS.filter(e => e.kind==="user_text" && e.text && !e.text.startsWith("[") && e.text.length<1200);
+  const files = changedFiles();
+  const created = [...files].filter(([,v])=>v.kind==="new");
+  const modified = [...files].filter(([,v])=>v.kind==="mod");
+  const bash = EVENTS.filter(e => e.kind==="tool_use" && e.name==="Bash").length;
+  const ai = EVENTS.filter(e => e.kind==="assistant_text").length;
+
+  view.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="n">${prompts.length}</div><div class="k">사용자 요청</div></div>
+      <div class="stat"><div class="n">${created.length}</div><div class="k">생성 파일</div></div>
+      <div class="stat"><div class="n">${modified.length}</div><div class="k">수정 파일</div></div>
+      <div class="stat"><div class="n">${bash}</div><div class="k">명령 실행</div></div>
+      <div class="stat"><div class="n">${ai}</div><div class="k">AI 응답</div></div>
+    </div>
+
+    <div class="aibox">
+      <button class="aibtn" id="aiSum">✨ AI 서술형 요약 생성 (claude -p)</button>
+      <div class="hint">기존 Claude Code 인증으로 생성합니다. 별도 API 키 불필요.</div>
+      <div class="aiout" id="aiSumOut" style="display:none"></div>
+    </div>
+
+    <h3 class="sec">📌 사용자 요청 (기계적 추출)</h3>
+    <ol class="prompts">${prompts.slice(0,15).map(p=>`<li>${esc(p.text.split("\n")[0].slice(0,140))}</li>`).join("") || "<li>(없음)</li>"}</ol>
+
+    <h3 class="sec">📂 변경된 파일</h3>
+    <ul class="files">${[...files].map(([f,v])=>`<li><span class="tag ${v.kind}">${v.kind==="new"?"생성":"수정"}</span>${esc(base(f))} <span style="color:var(--muted)">${esc(fileName(f))}</span></li>`).join("") || "<li>(없음)</li>"}</ul>
+  `;
+  document.getElementById("aiSum").onclick = (ev) => callAI("summary", ev.target, document.getElementById("aiSumOut"));
+}
+
+// ── 탭3: 아키텍처/구조 ───────────────────────────────────
+function renderDiagram() {
+  const files = changedFiles();
+  view.innerHTML = `
+    <div class="aibox">
+      <button class="aibtn" id="aiDia">✨ AI 아키텍처 다이어그램 생성 (claude -p)</button>
+      <div class="hint">아래는 변경 파일을 기계적으로 그린 "변경 지도"입니다. 진짜 구조도는 위 버튼으로 AI가 생성합니다.</div>
+      <div id="aiDiaOut" style="display:none"></div>
+    </div>
+    <h3 class="sec">🗺️ 변경 파일 맵 (기계적)</h3>
+    <div class="mermaid" id="mechMap"></div>
+  `;
+  // 기계적 변경 지도: top 디렉토리별 subgraph
+  const groups = {};
+  for (const [f, v] of files) (groups[topDir(f)] ??= []).push([f, v]);
+  let def = "flowchart LR\n";
+  let nid = 0; const ids = {};
+  for (const [dir, arr] of Object.entries(groups)) {
+    def += `  subgraph ${JSON.stringify(dir)}\n`;
+    for (const [f, v] of arr) {
+      const id = "n" + (nid++); ids[f] = id;
+      def += `    ${id}["${base(f).replace(/"/g,"")}"]\n`;
+    }
+    def += "  end\n";
+  }
+  for (const [f, v] of files) def += `  style ${ids[f]} fill:${v.kind==="new"?"#dcf5e3":"#e6efff"},stroke:#bbb\n`;
+  renderMermaid(document.getElementById("mechMap"), files.size ? def : "flowchart LR\n  x[변경 없음]");
+  document.getElementById("aiDia").onclick = (ev) => callAI("diagram", ev.target, document.getElementById("aiDiaOut"), true);
+}
+
+async function renderMermaid(el, def) {
+  try {
+    const { svg } = await mermaid.render("m" + (mermaidSeq++), def);
+    el.innerHTML = svg;
+  } catch (e) {
+    el.innerHTML = `<div class="hint">다이어그램 렌더 실패. 원본:</div><pre class="code">${esc(def)}</pre>`;
+  }
+}
+
+// ── 탭4: 코드 변경 (diff) ────────────────────────────────
+function renderDiff() {
+  const files = changedFiles();
+  if (!files.size) { view.innerHTML = `<p class="hint">코드 변경이 없습니다.</p>`; return; }
+  const frag = document.createDocumentFragment();
+  for (const [f, v] of files) {
+    const card = document.createElement("div");
+    card.className = "tool";
+    let body;
+    if (v.kind === "new") {
+      body = `<pre class="code">${esc(String(v.content).slice(0,6000))}</pre>`;
+    } else {
+      body = v.edits.map(i => editDiff(i)).join('<div style="height:6px"></div>');
+    }
+    card.innerHTML = `<div class="head"><span>${v.kind==="new"?"📄":"📝"}</span><span class="name">${v.kind==="new"?"생성":"수정"}</span><span class="path">${esc(fileName(f))}</span><span class="badge">${v.kind==="new"?"new":v.edits.length+"회"}</span></div>${body}`;
+    frag.appendChild(card);
+  }
+  view.replaceChildren(frag);
+}
+
+// ── AI 호출 (claude -p) ──────────────────────────────────
+const fmtK = (n) => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
+function usageLine(u) {
+  if (!u) return "";
+  const cost = u.cost != null ? `$${u.cost.toFixed(4)}` : "—";
+  const sec = u.durationMs != null ? `${(u.durationMs/1000).toFixed(1)}s` : "";
+  return `입력 <b>${fmtK(u.input)}</b> · 출력 <b>${fmtK(u.output)}</b> · 비용 <b>${cost}</b>${sec ? " · " + sec : ""}`;
+}
+// out 바로 뒤의 .usage 요소를 찾거나 생성
+function usageEl(out) {
+  let el = out.nextElementSibling;
+  if (!el || !el.classList.contains("usage")) {
+    el = document.createElement("div"); el.className = "usage";
+    out.after(el);
+  }
+  return el;
+}
+
+async function callAI(kind, btn, out, isDiagram) {
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "생성 중… (수십 초)";
+  out.style.display = "block"; out.className = isDiagram ? "" : "aiout"; out.textContent = "⏳ Claude가 생성 중입니다…";
+  const usage = usageEl(out); usage.textContent = "";
+  try {
+    const r = await fetch(`/api/ai/${kind}/${SESSION}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (isDiagram) {
+      out.className = "mermaid";
+      const def = data.text.replace(/^```mermaid\s*/i,"").replace(/```$/,"").trim();
+      renderMermaid(out, def);
+    } else {
+      out.className = "aiout"; out.textContent = data.text;
+    }
+    usage.innerHTML = usageLine(data.usage);
+  } catch (e) {
+    out.className = "aiout"; out.textContent = "❌ 실패: " + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+// ── SSE ──────────────────────────────────────────────────
+try { mermaid.initialize({ startOnLoad:false, theme:"neutral" }); } catch {}
+renderTabs(); draw();
 const es = new EventSource(`/events/${SESSION}`);
 es.addEventListener("snapshot", (m) => {
-  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 200;
-  renderAll(JSON.parse(m.data));
-  dot.classList.add("live");
-  stat.textContent = "실시간 연결됨";
-  if (nearBottom) window.scrollTo(0, document.body.scrollHeight);
+  EVENTS = JSON.parse(m.data);
+  dot.classList.add("live"); stat.textContent = "실시간 연결됨";
+  draw();
 });
 es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
 </script>

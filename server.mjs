@@ -9,6 +9,7 @@
 import http from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { watch } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -95,6 +96,21 @@ const server = http.createServer(async (req, res) => {
     return startSse(req, res, file);
   }
 
+  // AI 생성 (요약/다이어그램) — 기존 Claude Code 인증으로 headless 호출, 별도 키 불필요
+  const mAi = path.match(/^\/api\/ai\/(summary|diagram)\/([\w-]+)$/);
+  if (mAi) {
+    const [, kind, id] = mAi;
+    const file = await pathForSession(id);
+    if (!file) return send(res, 404, "application/json", JSON.stringify({ error: "session not found" }));
+    try {
+      const events = await eventsForFile(file);
+      const out = await runClaude(kind, buildDigest(events));
+      return send(res, 200, "application/json; charset=utf-8", JSON.stringify(out));
+    } catch (e) {
+      return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));
+    }
+  }
+
   send(res, 404, "text/plain", "not found");
 });
 
@@ -163,6 +179,79 @@ function renderIndex(sessions) {
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// 세션 이벤트 → AI에 넘길 압축 다이제스트(사용자 질문 + 도구 사용 + 변경 파일)
+function buildDigest(events) {
+  const prompts = [];
+  const edits = new Set();
+  const writes = new Set();
+  const cmds = [];
+  for (const e of events) {
+    if (e.kind === "user_text" && e.text && !e.text.startsWith("[")) prompts.push(e.text.slice(0, 300));
+    if (e.kind === "tool_use") {
+      const f = e.input?.file_path;
+      if (e.name === "Edit" && f) edits.add(f);
+      if (e.name === "Write" && f) writes.add(f);
+      if (e.name === "Bash" && e.input?.command) cmds.push(e.input.command.slice(0, 120));
+    }
+  }
+  const short = (p) => p.replace(/^.*\/(?=.*\/)/, "…/");
+  return [
+    "## 사용자 요청들",
+    prompts.slice(0, 12).map((p, i) => `${i + 1}. ${p}`).join("\n") || "(없음)",
+    "\n## 생성된 파일",
+    [...writes].map(short).join("\n") || "(없음)",
+    "\n## 수정된 파일",
+    [...edits].map(short).join("\n") || "(없음)",
+    "\n## 실행한 명령(일부)",
+    cmds.slice(0, 20).join("\n") || "(없음)",
+  ].join("\n").slice(0, 8000);
+}
+
+const PROMPTS = {
+  summary:
+    "다음은 Claude Code 코딩 세션의 작업 기록이다. 한국어로 핵심만 6줄 이내로 요약하라. " +
+    "무엇을 하려 했고, 어떤 작업을 했으며, 어떤 파일을 왜 바꿨는지 중심으로. 군더더기 금지.\n\n",
+  diagram:
+    "다음 코딩 세션의 변경을 Mermaid flowchart로 그려라. 코드펜스(```) 없이 mermaid 텍스트만 출력. " +
+    "파일/모듈 간 관계와 데이터 흐름 중심으로, 한눈에 구조가 보이게. 노드는 한국어 라벨 가능.\n\n",
+};
+
+// 기존 Claude Code 인증으로 headless 호출 (별도 API 키 불필요)
+// json 출력으로 받아 결과 텍스트 + 토큰/비용(usage)을 함께 반환한다.
+function runClaude(kind, digest) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", ["-p", "--model", "haiku", "--output-format", "json"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "", err = "";
+    const killer = setTimeout(() => child.kill("SIGKILL"), 120000);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => { clearTimeout(killer); reject(e); });
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      if (code !== 0) return reject(new Error(err.trim() || `claude exited ${code}`));
+      try {
+        const o = JSON.parse(out);
+        const u = o.usage || {};
+        resolve({
+          text: (o.result || "").trim(),
+          usage: {
+            input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
+            output: u.output_tokens || 0,
+            cost: o.total_cost_usd ?? null,
+            durationMs: o.duration_ms ?? null,
+          },
+        });
+      } catch (e) {
+        reject(new Error("claude 응답 파싱 실패: " + String(e?.message || e)));
+      }
+    });
+    child.stdin.write(PROMPTS[kind] + digest);
+    child.stdin.end();
+  });
 }
 
 server.listen(PORT, () => {
