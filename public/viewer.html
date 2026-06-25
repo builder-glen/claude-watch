@@ -72,6 +72,19 @@
   .hint { color:var(--muted); font-size:12.5px; margin:6px 0 14px; }
   .usage { margin-top:8px; font-size:12px; color:var(--muted); font-family:ui-monospace,Menlo,monospace; }
   .usage b { color:var(--ink); font-weight:600; }
+
+  /* 긴 블록 접기 */
+  .clamp { max-height:340px; overflow:hidden; }
+  .clamp.open { max-height:none; overflow:auto; }
+  .clamp-toggle { display:block; width:100%; border:none; background:#f0eeec; color:var(--accent);
+    font-size:12px; font-weight:600; padding:6px; cursor:pointer; }
+  .clamp-toggle:hover { background:#e9e6e3; }
+
+  /* FAB (우하단 고정 이동 버튼) */
+  .fab { position:fixed; right:20px; bottom:24px; display:flex; flex-direction:column; gap:8px; z-index:20; }
+  .fab button { width:44px; height:44px; border-radius:50%; border:1px solid var(--line);
+    background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.14); cursor:pointer; font-size:18px; color:var(--ink); line-height:1; }
+  .fab button:hover { border-color:var(--accent); color:var(--accent); }
 </style>
 </head>
 <body>
@@ -83,6 +96,10 @@
   <div class="tabs" id="tabs"></div>
 </header>
 <main id="view"></main>
+<div class="fab">
+  <button id="fabTop" title="처음으로">⤒</button>
+  <button id="fabBottom" title="가장 최근 대화로">⤓</button>
+</div>
 
 <script>
 const SESSION = "__SESSION_ID__";
@@ -94,6 +111,7 @@ const stat = document.getElementById("stat");
 let mermaidSeq = 0;
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const clampWrap = (inner) => `<div class="clamp">${inner}</div>`;
 const fileName = (p) => String(p || "").split("/").slice(-2).join("/");
 const base = (p) => String(p || "").split("/").pop();
 const topDir = (p) => { const parts = String(p||"").split("/").filter(Boolean); const i = parts.findIndex(x=>x==="src"||x==="lib"||x==="backend"||x==="public"||x==="app"); return i>=0 ? parts[i] : (parts.length>1?parts[parts.length-2]:"root"); };
@@ -111,7 +129,23 @@ function renderTabs() {
   document.querySelectorAll("[data-tab]").forEach(b =>
     b.onclick = () => { TAB = b.dataset.tab; renderTabs(); draw(); });
 }
-function draw() { TABS.find(t => t.id === TAB).render(); }
+function draw() { TABS.find(t => t.id === TAB).render(); applyClamps(); }
+
+// 렌더 후: 실제로 넘치는 .clamp 블록에만 "더 보기" 토글을 단다(안 넘치면 클램프 해제)
+function applyClamps() {
+  view.querySelectorAll(".clamp:not([data-clamp])").forEach((el) => {
+    el.setAttribute("data-clamp", "1");
+    if (el.scrollHeight <= el.clientHeight + 4) { el.classList.remove("clamp"); return; }
+    const btn = document.createElement("button");
+    btn.className = "clamp-toggle"; btn.textContent = "⌄ 더 보기";
+    btn.onclick = () => {
+      const open = el.classList.toggle("open");
+      btn.textContent = open ? "⌃ 접기" : "⌄ 더 보기";
+      if (!open) el.scrollIntoView({ block: "nearest" });
+    };
+    el.after(btn);
+  });
+}
 
 // ── 탭1: Raw 대화 ────────────────────────────────────────
 function renderRaw() {
@@ -128,7 +162,7 @@ function renderEvent(e) {
       ? `<details><summary class="role" style="cursor:pointer">🧑 사용자 (긴 입력 펼치기)</summary><div class="bubble">${esc(e.text)}</div></details>`
       : `<div class="role">🧑 사용자</div><div class="bubble">${esc(e.text)}</div>`;
   } else if (e.kind === "assistant_text") {
-    wrap.innerHTML = `<div class="bubble">${esc(e.text)}</div>`;
+    wrap.innerHTML = `<div class="bubble">${clampWrap(esc(e.text))}</div>`;
   } else if (e.kind === "thinking") {
     wrap.innerHTML = `<details class="think"><summary>💭 생각 펼치기</summary><div class="body">${esc(e.text)}</div></details>`;
   } else if (e.kind === "image") {
@@ -151,15 +185,15 @@ function renderTool(e) {
   const i = e.input || {};
   if (e.name === "Bash") {
     card.innerHTML = `<div class="head"><span>⚡</span><span class="name">Bash</span>${badge(e)}</div>`+
-      `<pre class="code">$ ${esc(i.command)}</pre>`+(i.description?`<div class="desc">${esc(i.description)}</div>`:"")+resultBlock(e);
+      clampWrap(`<pre class="code">$ ${esc(i.command)}</pre>`)+(i.description?`<div class="desc">${esc(i.description)}</div>`:"")+resultBlock(e);
   } else if (e.name === "Edit") {
-    card.innerHTML = `<div class="head"><span>📝</span><span class="name">파일 수정</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+editDiff(i)+resultBlock(e);
+    card.innerHTML = `<div class="head"><span>📝</span><span class="name">파일 수정</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+clampWrap(editDiff(i))+resultBlock(e);
   } else if (e.name === "Write") {
-    card.innerHTML = `<div class="head"><span>📄</span><span class="name">파일 생성</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+`<pre class="code">${esc(String(i.content||"").slice(0,4000))}</pre>`+resultBlock(e);
+    card.innerHTML = `<div class="head"><span>📄</span><span class="name">파일 생성</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`+clampWrap(`<pre class="code">${esc(String(i.content||"").slice(0,4000))}</pre>`)+resultBlock(e);
   } else if (e.name === "Read") {
     card.innerHTML = `<div class="head"><span>📖</span><span class="name">읽기</span><span class="path">${esc(fileName(i.file_path))}</span>${badge(e)}</div>`;
   } else {
-    card.innerHTML = `<div class="head"><span>🔧</span><span class="name">${esc(e.name)}</span>${badge(e)}</div>`+`<pre class="code">${esc(JSON.stringify(i,null,2).slice(0,1500))}</pre>`+resultBlock(e);
+    card.innerHTML = `<div class="head"><span>🔧</span><span class="name">${esc(e.name)}</span>${badge(e)}</div>`+clampWrap(`<pre class="code">${esc(JSON.stringify(i,null,2).slice(0,1500))}</pre>`)+resultBlock(e);
   }
   return card;
 }
@@ -262,9 +296,9 @@ function renderDiff() {
     card.className = "tool";
     let body;
     if (v.kind === "new") {
-      body = `<pre class="code">${esc(String(v.content).slice(0,6000))}</pre>`;
+      body = clampWrap(`<pre class="code">${esc(String(v.content).slice(0,6000))}</pre>`);
     } else {
-      body = v.edits.map(i => editDiff(i)).join('<div style="height:6px"></div>');
+      body = clampWrap(v.edits.map(i => editDiff(i)).join('<div style="height:6px"></div>'));
     }
     card.innerHTML = `<div class="head"><span>${v.kind==="new"?"📄":"📝"}</span><span class="name">${v.kind==="new"?"생성":"수정"}</span><span class="path">${esc(fileName(f))}</span><span class="badge">${v.kind==="new"?"new":v.edits.length+"회"}</span></div>${body}`;
     frag.appendChild(card);
@@ -315,6 +349,8 @@ async function callAI(kind, btn, out, isDiagram) {
 
 // ── SSE ──────────────────────────────────────────────────
 try { mermaid.initialize({ startOnLoad:false, theme:"neutral" }); } catch {}
+document.getElementById("fabTop").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
+document.getElementById("fabBottom").onclick = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 renderTabs(); draw();
 const es = new EventSource(`/events/${SESSION}`);
 es.addEventListener("snapshot", (m) => {
