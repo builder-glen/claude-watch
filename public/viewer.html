@@ -98,6 +98,20 @@
   ul.files li { padding:3px 0; } ul.files .tag { font-size:10px; padding:1px 6px; border-radius:8px; margin-right:6px; }
   .tag.new { background:#1f3a2a; color:#8fe0ab; } .tag.mod { background:#1f2f4a; color:#9cc0ef; }
 
+  /* 세션 요약 v1: 의사결정·산출물·핫스팟 */
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:640px){ .cols { grid-template-columns:1fr; } }
+  .decision { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:10px; padding:10px 14px; margin:8px 0; }
+  .decision .dq { font-weight:600; font-size:13.5px; margin-bottom:5px; }
+  .decision .dtag { font-size:10px; font-weight:700; color:var(--accent); background:#2c1a26;
+    padding:1px 7px; border-radius:10px; margin-right:6px; vertical-align:middle; }
+  .decision .dchosen { color:#8fe0ab; font-size:13px; }
+  .decision details.dalts { margin-top:7px; }
+  .decision details.dalts summary { cursor:pointer; color:var(--muted); font-size:12px; list-style:none; }
+  .decision .dalt { font-size:12px; color:var(--muted); padding:3px 0 3px 12px; border-left:2px solid var(--line); margin-top:5px; }
+  .decision .dalt b { color:var(--ink); }
+
   .aibox { margin:14px 0; }
   .aibtn { background:var(--accent); color:#1a0f15; border:none; padding:9px 16px; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; }
   .aibtn:disabled { opacity:.5; cursor:wait; }
@@ -283,35 +297,103 @@ function changedFiles() {
   return map;
 }
 
-// ── 탭2: 세션 요약 ───────────────────────────────────────
+// ── 탭2: 세션 요약 (v1: 데이터로 자동 정리, 토큰 0) ────────
+// 결과문자열 "...\"질문\"=\"선택답\"..." → {질문:선택답} 맵
+function parseChosen(resultStr) {
+  const map = {}; const re = /"([^"]+)"\s*=\s*"([^"]+)"/g; let m;
+  while ((m = re.exec(String(resultStr || "")))) map[m[1]] = m[2];
+  return map;
+}
+// AskUserQuestion → 의사결정 목록 (질문·선택·대안+설명)
+function decisions(events) {
+  const out = [];
+  for (const e of events) {
+    if (e.kind !== "tool_use" || e.name !== "AskUserQuestion") continue;
+    const chosen = parseChosen(e.result);
+    for (const q of (e.input?.questions || [])) {
+      const ch = chosen[q.question];
+      out.push({
+        header: q.header || "", question: q.question || "", chosen: ch || "(미응답)",
+        options: (q.options || []).map(o => ({ label: o.label, desc: o.description || "", picked: o.label === ch })),
+      });
+    }
+  }
+  return out;
+}
+// 세션 소요 시간(첫~끝 timestamp)
+function sessionDuration(events) {
+  const ts = events.map(e => e.ts).filter(Boolean).map(t => new Date(t).getTime()).filter(n => !isNaN(n));
+  if (ts.length < 2) return "—";
+  let s = (Math.max(...ts) - Math.min(...ts)) / 1000;
+  const d = Math.floor(s / 86400); s -= d * 86400;
+  const h = Math.floor(s / 3600); s -= h * 3600;
+  const m = Math.floor(s / 60);
+  return d ? `${d}일 ${h}시간` : h ? `${h}시간 ${m}분` : `${m}분`;
+}
+// Bash의 git commit -m 메시지 추출
+function commits(events) {
+  const out = [];
+  for (const e of events) {
+    if (e.kind !== "tool_use" || e.name !== "Bash") continue;
+    const cmd = e.input?.command || "";
+    if (!/git commit/.test(cmd)) continue;
+    const m = cmd.match(/-m\s+["']([^"']+)["']/);
+    out.push(m ? m[1] : "(커밋)");
+  }
+  return out;
+}
+function decisionCard(d) {
+  const alts = d.options.filter(o => !o.picked);
+  return `<div class="decision">
+    <div class="dq">${d.header ? `<span class="dtag">${esc(d.header)}</span>` : ""}${esc(d.question)}</div>
+    <div class="dchosen">✅ ${esc(d.chosen)}</div>
+    ${alts.length ? `<details class="dalts"><summary>대안 ${alts.length}개 ▸</summary>${alts.map(o => `<div class="dalt"><b>${esc(o.label)}</b>${o.desc ? " — " + esc(o.desc) : ""}</div>`).join("")}</details>` : ""}
+  </div>`;
+}
+
 function renderSummary() {
-  const prompts = EVENTS.filter(e => e.kind==="user_text" && e.text && !e.text.startsWith("[") && e.text.length<1200);
   const files = changedFiles();
-  const created = [...files].filter(([,v])=>v.kind==="new");
-  const modified = [...files].filter(([,v])=>v.kind==="mod");
-  const bash = EVENTS.filter(e => e.kind==="tool_use" && e.name==="Bash").length;
-  const ai = EVENTS.filter(e => e.kind==="assistant_text").length;
+  const decs = decisions(EVENTS);
+  const cms = commits(EVENTS);
+  const created = [...files].filter(([,v]) => v.kind === "new");
+  const hot = [...files].filter(([,v]) => v.kind === "mod").sort((a,b) => b[1].edits.length - a[1].edits.length);
+  const fails = EVENTS.filter(e => e.kind === "tool_use" && e.isError).length;
 
   view.innerHTML = `
     <div class="stats">
-      <div class="stat"><div class="n">${prompts.length}</div><div class="k">사용자 요청</div></div>
-      <div class="stat"><div class="n">${created.length}</div><div class="k">생성 파일</div></div>
-      <div class="stat"><div class="n">${modified.length}</div><div class="k">수정 파일</div></div>
-      <div class="stat"><div class="n">${bash}</div><div class="k">명령 실행</div></div>
-      <div class="stat"><div class="n">${ai}</div><div class="k">AI 응답</div></div>
+      <div class="stat"><div class="n">${sessionDuration(EVENTS)}</div><div class="k">소요 시간</div></div>
+      <div class="stat"><div class="n">${files.size}</div><div class="k">변경 파일</div></div>
+      <div class="stat"><div class="n">${decs.length}</div><div class="k">의사결정</div></div>
+      <div class="stat"><div class="n">${cms.length}</div><div class="k">커밋</div></div>
+      <div class="stat"><div class="n">${fails}</div><div class="k">코스 수정</div></div>
     </div>
 
     <div class="aibox">
       <button class="aibtn" id="aiSum">✨ AI 서술형 요약 생성 (claude -p)</button>
-      <div class="hint">기존 Claude Code 인증으로 생성합니다. 별도 API 키 불필요.</div>
+      <div class="hint">아래는 데이터로 자동 정리한 요약(토큰 0). 서술형 내러티브는 위 버튼.</div>
       <div class="aiout" id="aiSumOut" style="display:none"></div>
     </div>
 
-    <h3 class="sec">📌 사용자 요청 (기계적 추출)</h3>
-    <ol class="prompts">${prompts.slice(0,15).map(p=>`<li>${esc(p.text.split("\n")[0].slice(0,140))}</li>`).join("") || "<li>(없음)</li>"}</ol>
+    <h3 class="sec">⚖️ 의사결정 ${decs.length}건</h3>
+    ${decs.length ? decs.map(decisionCard).join("") : '<p class="hint">기록된 결정(AskUserQuestion)이 없습니다.</p>'}
 
-    <h3 class="sec">📂 변경된 파일</h3>
-    <ul class="files">${[...files].map(([f,v])=>`<li><span class="tag ${v.kind}">${v.kind==="new"?"생성":"수정"}</span>${esc(base(f))} <span style="color:var(--muted)">${esc(fileName(f))}</span></li>`).join("") || "<li>(없음)</li>"}</ul>
+    <div class="cols">
+      <div>
+        <h3 class="sec">📦 산출물</h3>
+        <div class="hint" style="margin:0 0 6px">커밋 ${cms.length} · 새 파일 ${created.length}</div>
+        <ul class="files">
+          ${cms.slice(0,12).map(m => `<li>✅ ${esc(m)}</li>`).join("")}
+          ${created.slice(0,12).map(([f]) => `<li><span class="tag new">생성</span>${esc(base(f))}</li>`).join("")}
+          ${(!cms.length && !created.length) ? "<li>(없음)</li>" : ""}
+        </ul>
+      </div>
+      <div>
+        <h3 class="sec">🔥 변경 핫스팟 <span class="hint">(많이 고친 파일)</span></h3>
+        <ul class="files">
+          ${hot.slice(0,8).map(([f,v]) => `<li><b>×${v.edits.length}</b> &nbsp;${esc(base(f))}</li>`).join("") || "<li>(없음)</li>"}
+        </ul>
+      </div>
+    </div>
   `;
   document.getElementById("aiSum").onclick = (ev) => callAI("summary", ev.target, document.getElementById("aiSumOut"));
 }
