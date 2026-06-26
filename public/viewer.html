@@ -25,6 +25,7 @@
   .usagebar { margin-left:auto; font-size:12px; color:var(--muted); font-family:var(--mono); white-space:nowrap; }
   .usagebar b { color:var(--ink); font-weight:700; }
   .usagebar .cost { color:#ffb454; font-weight:700; }
+  .usagebar .acct { color:#71717c; } .usagebar .acct b { color:#a9a9b4; }
   .status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:14px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#555; }
   .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
@@ -531,18 +532,20 @@ async function callAI(kind, btn, out, isDiagram) {
   }
 }
 
-// ── 상단 토큰바 갱신: 세션 토큰 + 계정 한도% (F는 hover) ──
+// ── 상단 토큰바: 이 세션 토큰(안 리셋) + 계정 한도%(리셋) 명확히 분리 ──
 function updateUsageBar(u) {
   if (!u) return;
-  const parts = [`토큰 <b>${fmtTok(u.total)}</b>`];
+  let html = `이 세션 <b>${fmtTok(u.total)}</b>`;
   if (u.rate) {
-    if (u.rate.fiveHour != null) parts.push(`5h <b>${u.rate.fiveHour}%</b>`);
-    if (u.rate.sevenDay != null) parts.push(`주간 <b>${u.rate.sevenDay}%</b>`);
+    const r = [];
+    if (u.rate.fiveHour != null) r.push(`5h <b>${u.rate.fiveHour}%</b>`);
+    if (u.rate.sevenDay != null) r.push(`주간 <b>${u.rate.sevenDay}%</b>`);
+    if (r.length) html += ` <span class="acct">· 계정 ${r.join(" · ")}</span>`;
   }
-  usagebar.innerHTML = parts.join(" · ");
+  usagebar.innerHTML = html;
   const cost = u.cost != null ? `~$${u.cost.toFixed(2)}` : "—";
-  usagebar.title = `이 세션 토큰 ${u.total.toLocaleString()} · API 환산 ${cost} (구독제면 실제 청구 아님)`
-    + (u.rate ? "  |  5h·주간 = 계정 전체 한도 소진율(세션별 아님)" : "");
+  usagebar.title = `이 세션 토큰 ${u.total.toLocaleString()} (이 대화 누적, 리셋 안 됨) · API 환산 ${cost} (구독제면 실제 청구 아님)`
+    + (u.rate ? "\n계정 5h·주간 = 전체 한도 소진율(세션별 아님, 창마다 리셋)" : "");
 }
 
 // ── 초기화 / SSE ─────────────────────────────────────────
