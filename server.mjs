@@ -14,7 +14,7 @@ import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { parseTranscript } from "./lib/parse.mjs";
+import { parseTranscript, summarizeUsage } from "./lib/parse.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -55,6 +55,21 @@ async function pathForSession(id) {
 async function eventsForFile(file) {
   const text = await readFile(file, "utf8");
   return parseTranscript(text);
+}
+
+// 구독 한도(rate_limits)는 statusLine stdin에만 있다 → statusline.sh가 떨군 파일에서 읽는다.
+// 계정 전체 기준(세션별 아님). 데이터 없으면 null.
+const CW_DIR = join(homedir(), ".claude-watch");
+async function readRateLimits() {
+  try {
+    const o = JSON.parse(await readFile(join(CW_DIR, "statusline-input.json"), "utf8"));
+    const rl = o.rate_limits;
+    if (!rl) return null;
+    const pct = (x) => (x && typeof x.used_percentage === "number") ? Math.round(x.used_percentage) : null;
+    const fiveHour = pct(rl.five_hour), sevenDay = pct(rl.seven_day);
+    if (fiveHour == null && sevenDay == null) return null;
+    return { fiveHour, sevenDay };
+  } catch { return null; }
 }
 
 // ── 라우팅 ───────────────────────────────────────────────────────────
@@ -131,8 +146,12 @@ function startSse(req, res, file) {
   const push = async () => {
     if (closed) return;
     try {
-      const events = await eventsForFile(file);
+      const text = await readFile(file, "utf8");
+      const events = parseTranscript(text);
+      const usage = summarizeUsage(text);
+      usage.rate = await readRateLimits();
       res.write(`event: snapshot\ndata: ${JSON.stringify(events)}\n\n`);
+      res.write(`event: usage\ndata: ${JSON.stringify(usage)}\n\n`);
     } catch { /* 파일 일시적 읽기 실패는 무시 */ }
   };
 

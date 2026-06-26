@@ -11,6 +11,10 @@ BOOT_LOCK="/tmp/claude-watch-boot.lock"
 # stdin(JSON)은 한 번만 읽어 변수에 보관 (hud에 재공급해야 하므로)
 input="$(cat)"
 
+# rate_limits(구독 한도) 등 statusLine 페이로드를 뷰어가 읽도록 파일로 떨군다(파싱은 서버가)
+mkdir -p "$HOME/.claude-watch" 2>/dev/null
+printf '%s' "$input" > "$HOME/.claude-watch/statusline-input.json" 2>/dev/null
+
 # 1) 서버 생존 확인(서브프로세스 없이 /dev/tcp). 죽었으면 락 잡고 1회만 detached 기동.
 if ! (exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null; then
   if mkdir "$BOOT_LOCK" 2>/dev/null; then
