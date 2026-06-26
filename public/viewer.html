@@ -111,6 +111,10 @@
   .decision details.dalts summary { cursor:pointer; color:var(--muted); font-size:12px; list-style:none; }
   .decision .dalt { font-size:12px; color:var(--muted); padding:3px 0 3px 12px; border-left:2px solid var(--line); margin-top:5px; }
   .decision .dalt b { color:var(--ink); }
+  .topsum { background:var(--card); border:1px solid var(--line); border-left:3px solid #ffb454; border-radius:12px; padding:14px 16px; margin:6px 0 18px; }
+  .topsum-h { font-weight:700; font-size:14px; margin-bottom:8px; }
+  .topsum-body { font-size:13.5px; line-height:1.85; }
+  .topsum-body b { color:#ffd9a3; font-weight:700; }
 
   .aibox { margin:14px 0; }
   .aibtn { background:var(--accent); color:#1a0f15; border:none; padding:9px 16px; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; }
@@ -330,17 +334,43 @@ function sessionDuration(events) {
   const m = Math.floor(s / 60);
   return d ? `${d}일 ${h}시간` : h ? `${h}시간 ${m}분` : `${m}분`;
 }
-// Bash의 git commit -m 메시지 추출
+// git commit 명령에서 사람이 읽을 메시지(제목 한 줄) 추출
+function commitMsg(cmd) {
+  // 단순 -m "msg" / 'msg' (단, $(...) 같은 셸 치환은 제외)
+  let m = cmd.match(/-m\s+"([^"$]+)"/) || cmd.match(/-m\s+'([^']+)'/);
+  if (m) return m[1].split("\n")[0].trim();
+  // heredoc: <<'EOF' ... EOF  → 첫 비어있지 않은 줄
+  m = cmd.match(/<<\s*['"]?(\w+)['"]?\s*\n([\s\S]*?)\n\1/);
+  if (m) { const f = m[2].split("\n").map(s => s.trim()).filter(Boolean)[0]; if (f) return f; }
+  return "커밋";
+}
 function commits(events) {
   const out = [];
   for (const e of events) {
     if (e.kind !== "tool_use" || e.name !== "Bash") continue;
     const cmd = e.input?.command || "";
     if (!/git commit/.test(cmd)) continue;
-    const m = cmd.match(/-m\s+["']([^"']+)["']/);
-    out.push(m ? m[1] : "(커밋)");
+    out.push(commitMsg(cmd));
   }
   return out;
+}
+
+// 최상단 "이 세션 한눈에" — 데이터로 자동 생성(토큰 0)
+function autoSummary(events) {
+  const files = changedFiles();
+  const decs = decisions(events);
+  const cms = commits(events);
+  const created = [...files].filter(([,v]) => v.kind === "new").length;
+  const mod = [...files].filter(([,v]) => v.kind === "mod").length;
+  const hot = [...files].filter(([,v]) => v.kind === "mod")
+    .sort((a,b) => b[1].edits.length - a[1].edits.length).slice(0,3).map(([f]) => base(f));
+  const decHeads = decs.slice(0,4).map(d => d.header || d.question.slice(0,18)).filter(Boolean);
+  const lines = [];
+  lines.push(`<b>${sessionDuration(events)}</b> 동안 파일 <b>${files.size}</b>개 작업 (생성 ${created} · 수정 ${mod}) · 의사결정 <b>${decs.length}</b>건${cms.length ? ` · 커밋 <b>${cms.length}</b>` : ""}`);
+  if (hot.length) lines.push(`주로 손본 곳: ${hot.map(esc).join(", ")}`);
+  if (decHeads.length) lines.push(`주요 결정: ${decHeads.map(esc).join(" · ")}`);
+  if (cms.length) lines.push(`대표 커밋: ${esc(cms[0])}`);
+  return lines.map(l => `<div>• ${l}</div>`).join("");
 }
 function decisionCard(d) {
   const alts = d.options.filter(o => !o.picked);
@@ -359,7 +389,18 @@ function renderSummary() {
   const hot = [...files].filter(([,v]) => v.kind === "mod").sort((a,b) => b[1].edits.length - a[1].edits.length);
   const fails = EVENTS.filter(e => e.kind === "tool_use" && e.isError).length;
 
+  const edited = [...files].filter(([,v]) => v.kind === "mod");
+
   view.innerHTML = `
+    <div class="topsum">
+      <div class="topsum-h">📋 이 세션 한눈에 <span class="hint">(자동 · 토큰 0)</span></div>
+      <div class="topsum-body">${autoSummary(EVENTS)}</div>
+      <div class="aibox" style="margin:12px 0 0">
+        <button class="aibtn" id="aiSum">✨ AI 서술형 요약으로 더 정교하게</button>
+        <div class="aiout" id="aiSumOut" style="display:none"></div>
+      </div>
+    </div>
+
     <div class="stats">
       <div class="stat"><div class="n">${sessionDuration(EVENTS)}</div><div class="k">소요 시간</div></div>
       <div class="stat"><div class="n">${files.size}</div><div class="k">변경 파일</div></div>
@@ -368,23 +409,17 @@ function renderSummary() {
       <div class="stat"><div class="n">${fails}</div><div class="k">코스 수정</div></div>
     </div>
 
-    <div class="aibox">
-      <button class="aibtn" id="aiSum">✨ AI 서술형 요약 생성 (claude -p)</button>
-      <div class="hint">아래는 데이터로 자동 정리한 요약(토큰 0). 서술형 내러티브는 위 버튼.</div>
-      <div class="aiout" id="aiSumOut" style="display:none"></div>
-    </div>
-
     <h3 class="sec">⚖️ 의사결정 ${decs.length}건</h3>
     ${decs.length ? decs.map(decisionCard).join("") : '<p class="hint">기록된 결정(AskUserQuestion)이 없습니다.</p>'}
 
     <div class="cols">
       <div>
         <h3 class="sec">📦 산출물</h3>
-        <div class="hint" style="margin:0 0 6px">커밋 ${cms.length} · 새 파일 ${created.length}</div>
+        <div class="hint" style="margin:0 0 6px">파일 생성 ${created.length} · 수정 ${edited.length}${cms.length ? ` · 커밋 ${cms.length}` : ""}</div>
         <ul class="files">
-          ${cms.slice(0,12).map(m => `<li>✅ ${esc(m)}</li>`).join("")}
-          ${created.slice(0,12).map(([f]) => `<li><span class="tag new">생성</span>${esc(base(f))}</li>`).join("")}
-          ${(!cms.length && !created.length) ? "<li>(없음)</li>" : ""}
+          ${cms.slice(0,8).map(m => `<li>✅ <span style="color:var(--ink)">${esc(m)}</span></li>`).join("")}
+          ${created.slice(0,12).map(([f]) => `<li><span class="tag new">생성</span> ${esc(base(f))}</li>`).join("")}
+          ${(!cms.length && !created.length) ? "<li>(파일 변경 없음)</li>" : ""}
         </ul>
       </div>
       <div>
