@@ -112,6 +112,15 @@
   .decision details.dalts summary { cursor:pointer; color:var(--muted); font-size:12px; list-style:none; }
   .decision .dalt { font-size:12px; color:var(--muted); padding:3px 0 3px 12px; border-left:2px solid var(--line); margin-top:5px; }
   .decision .dalt b { color:var(--ink); }
+  /* 섹션 접기/펼치기 래퍼 */
+  details.fold { margin:22px 0 0; }
+  details.fold > summary { cursor:pointer; list-style:none; font-size:14px; font-weight:700; margin:0; display:flex; align-items:center; gap:7px; padding:4px 0; }
+  details.fold > summary::-webkit-details-marker { display:none; }
+  details.fold > summary::before { content:"▸"; color:var(--muted); font-size:12px; transition:transform .15s; }
+  details.fold[open] > summary::before { transform:rotate(90deg); }
+  details.fold > summary:hover { color:var(--accent); }
+  .foldbody { margin-top:10px; }
+
   .topsum { background:var(--card); border:1px solid var(--line); border-left:3px solid #ffb454; border-radius:12px; padding:14px 16px; margin:6px 0 18px; }
   .topsum-h { font-weight:700; font-size:14px; margin-bottom:8px; }
   .topsum-body { font-size:13.5px; line-height:1.85; }
@@ -410,8 +419,12 @@ function renderSummary() {
       <div class="stat"><div class="n">${fails}</div><div class="k">코스 수정</div></div>
     </div>
 
-    <h3 class="sec">⚖️ 의사결정 ${decs.length}건</h3>
-    ${decs.length ? decs.map(decisionCard).join("") : '<p class="hint">기록된 결정(AskUserQuestion)이 없습니다.</p>'}
+    <details class="fold" open>
+      <summary>⚖️ 의사결정 ${decs.length}건</summary>
+      <div class="foldbody">
+        ${decs.length ? decs.map(decisionCard).join("") : '<p class="hint">기록된 결정(AskUserQuestion)이 없습니다.</p>'}
+      </div>
+    </details>
 
     <div class="cols">
       <div>
