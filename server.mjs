@@ -156,12 +156,19 @@ async function readRateLimits() {
 }
 
 // ── 라우팅 ───────────────────────────────────────────────────────────
-const VIEWER = await readFile(join(__dirname, "public", "viewer.html"), "utf8");
-const LIST = await readFile(join(__dirname, "public", "list.html"), "utf8");
+const VIEWER_PATH = join(__dirname, "public", "viewer.html");
+const LIST_PATH = join(__dirname, "public", "list.html");
+let VIEWER = await readFile(VIEWER_PATH, "utf8");
+let LIST = await readFile(LIST_PATH, "utf8");
+// 개발 모드: 매 요청마다 HTML을 다시 읽어 새로고침만으로 반영(핫리로드). 배포 땐 끄고 메모리 캐시 사용.
+const DEV = process.env.CW_DEV === "1";
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
+
+  // 개발 모드면 매 요청마다 뷰어/리스트 HTML을 다시 읽어 즉시 반영(서버 재시작 불필요)
+  if (DEV) { VIEWER = await readFile(VIEWER_PATH, "utf8"); LIST = await readFile(LIST_PATH, "utf8"); }
 
   if (path === "/health") return send(res, 200, "text/plain", "ok");
 
