@@ -26,6 +26,9 @@
   .usagebar b { color:var(--ink); font-weight:700; }
   .usagebar .cost { color:#ffb454; font-weight:700; }
   .usagebar .acct { color:#71717c; } .usagebar .acct b { color:#a9a9b4; }
+  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .hbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .hbtn:disabled { opacity:.5; cursor:wait; }
   .status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:14px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#555; }
   .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
@@ -154,6 +157,7 @@
   <div class="topline">
     <h1>🦞 claude-watch</h1>
     <div class="usagebar" id="usagebar" title="이 세션 누적 토큰 · API 환산 추정 비용 (구독제면 실제 청구액 아님)">집계 중…</div>
+    <button id="exportBtn" class="hbtn" title="이 세션을 자체완결 HTML 파일로 내보내기">📦 내보내기</button>
     <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
   </div>
   <div class="tabs" id="tabs"></div>
@@ -166,7 +170,13 @@
 
 <script>
 const SESSION = "__SESSION_ID__";
-let EVENTS = [];
+// export(도시락) 모드: <script type=application/json>에서 데이터를 읽음(SSE 없음)
+const EXPORT = (() => {
+  const el = document.getElementById("cw-export-data");
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch (e) { console.error("export data parse 실패", e); return null; }
+})();
+let EVENTS = EXPORT ? EXPORT.events : [];
 let TAB = "raw";
 const view = document.getElementById("view");
 const dot = document.getElementById("dot");
@@ -550,8 +560,9 @@ async function callAI(kind, btn, out, isDiagram) {
 // 탭 열 때 캐시된 AI 결과를 즉시 표시 (생성 X, 토큰 0). stale면 재생성 힌트.
 async function loadCachedAI(kind, out, btn, isDiagram) {
   try {
-    const r = await fetch(`/api/ai-cache/${kind}/${SESSION}`);
-    const data = await r.json();
+    let data;
+    if (EXPORT) { data = EXPORT.cache && EXPORT.cache[kind]; btn.style.display = "none"; }
+    else { const r = await fetch(`/api/ai-cache/${kind}/${SESSION}`); data = await r.json(); }
     if (!data || data.cached === false || !data.text) return;
     out.style.display = "block";
     if (isDiagram) {
@@ -592,15 +603,32 @@ try { mermaid.initialize({ startOnLoad:false, theme:"dark" }); } catch {}
 try { if (window.hljs) hljs.configure({ ignoreUnescapedHTML:true }); } catch {}
 document.getElementById("fabTop").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
 document.getElementById("fabBottom").onclick = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+const exportBtn = document.getElementById("exportBtn");
+if (EXPORT) { exportBtn.style.display = "none"; }
+else exportBtn.onclick = async () => {
+  exportBtn.disabled = true; const t = exportBtn.textContent; exportBtn.textContent = "내보내는 중…";
+  try {
+    const r = await fetch(`/export/${SESSION}`); const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    stat.textContent = `저장됨: ${d.file}`;
+    alert(`내보냈습니다:\n${d.path}`);
+  } catch (e) { alert("내보내기 실패: " + e.message); }
+  finally { exportBtn.disabled = false; exportBtn.textContent = t; }
+};
 renderTabs(); draw();
-const es = new EventSource(`/events/${SESSION}`);
-es.addEventListener("snapshot", (m) => {
-  EVENTS = JSON.parse(m.data);
-  dot.classList.add("live"); stat.textContent = "실시간 연결됨";
-  draw();
-});
-es.addEventListener("usage", (m) => { try { updateUsageBar(JSON.parse(m.data)); } catch {} });
-es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
+if (EXPORT) {
+  stat.textContent = "내보낸 스냅샷";
+  updateUsageBar(EXPORT.usage);
+} else {
+  const es = new EventSource(`/events/${SESSION}`);
+  es.addEventListener("snapshot", (m) => {
+    EVENTS = JSON.parse(m.data);
+    dot.classList.add("live"); stat.textContent = "실시간 연결됨";
+    draw();
+  });
+  es.addEventListener("usage", (m) => { try { updateUsageBar(JSON.parse(m.data)); } catch {} });
+  es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
+}
 </script>
 </body>
 </html>

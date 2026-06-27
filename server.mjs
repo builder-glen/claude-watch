@@ -147,6 +147,51 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // export: 자체완결 HTML(데이터 인라인, SSE 없음) 생성 → ~/.claude-watch/exports/ 저장
+  //   ?refresh=1 이면 stale/없는 AI를 그 자리에서 재생성(최신화)
+  const mExport = path.match(/^\/export\/([\w-]+)$/);
+  if (mExport) {
+    const id = mExport[1];
+    const sessions = await findSessions();
+    const sess = sessions.find((s) => s.id === id);
+    if (!sess) return send(res, 404, "application/json", JSON.stringify({ error: "session not found" }));
+    try {
+      const text = await readFile(sess.path, "utf8");
+      const events = parseTranscript(text);
+      const usage = summarizeUsage(text); usage.rate = await readRateLimits();
+      const refresh = url.searchParams.get("refresh") === "1";
+      const cache = {};
+      for (const kind of ["summary", "diagram"]) {
+        let c = await readCache(id, kind);
+        const stale = !c || (c.atEventCount != null && c.atEventCount < events.length);
+        if (refresh && stale) {
+          try { const out = await runClaude(kind, buildDigest(events)); out.atEventCount = events.length; await writeCache(id, kind, out); c = out; } catch {}
+        }
+        cache[kind] = (c && c.text) ? c : null;
+      }
+      // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
+      // </script> 만 닫힘 방지로 이스케이프.
+      const dataJson = JSON.stringify({ events, usage, cache }).replace(/<\/script>/gi, "<\\/script>");
+      const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
+      // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
+      const html = VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>");
+      const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      const d = new Date();
+      const ymd = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+      const clean = (s) => String(s).replace(/[\/\\:*?"<>|\n\r]+/g, " ").trim();
+      const proj = clean((sess.project || "").split("/").pop() || "session");
+      const title = clean(titleSrc.split("\n")[0]).slice(0, 40);
+      const fname = `[${ymd}] ${proj} · ${title}.html`;
+      const EXPORT_DIR = join(CW_DIR, "exports");
+      await mkdir(EXPORT_DIR, { recursive: true });
+      const fpath = join(EXPORT_DIR, fname);
+      await writeFile(fpath, html, "utf8");
+      return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ ok: true, file: fname, path: fpath, hasAI: { summary: !!cache.summary, diagram: !!cache.diagram } }));
+    } catch (e) {
+      return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));
+    }
+  }
+
   send(res, 404, "text/plain", "not found");
 });
 
