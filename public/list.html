@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>claude-watch · 세션 목록</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#15151a; --card:#1e1e24; --line:#2c2c35; --muted:#8b8b96; --ink:#e7e7ec; --accent:#ff5fa8;
+    --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 var(--mono); }
+  header { position:sticky; top:0; z-index:5; background:rgba(21,21,26,.94); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:12px 20px; }
+  .top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:15px; margin:0; font-weight:700; }
+  .spacer { flex:1; }
+  .sortbtns button, .ghost { background:var(--card); color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:6px 12px; font:inherit; font-size:12px; cursor:pointer; }
+  .sortbtns button.on { color:var(--accent); border-color:var(--accent); }
+  input.search { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font:inherit; font-size:13px; min-width:240px; }
+  main { max-width:980px; margin:0 auto; padding:20px; }
+  .proj { margin:18px 0; }
+  .proj > summary { cursor:pointer; list-style:none; font-weight:700; font-size:14px; color:var(--accent); padding:6px 0; display:flex; align-items:center; gap:8px; }
+  .proj > summary::-webkit-details-marker { display:none; }
+  .proj > summary::before { content:"▸"; color:var(--muted); transition:transform .15s; }
+  .proj[open] > summary::before { transform:rotate(90deg); }
+  .proj .count { color:var(--muted); font-weight:400; font-size:12px; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 12px; margin:6px 0; background:var(--card);
+    border:1px solid var(--line); border-radius:10px; }
+  .row:hover { border-color:#3a3a44; }
+  .rmain { flex:1; min-width:0; }
+  .rtitle { font-weight:600; font-size:13.5px; cursor:text; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rtitle:hover { color:var(--accent); }
+  .rmeta { color:var(--muted); font-size:11.5px; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap; }
+  .rmeta .chip b { color:var(--ink); }
+  .ract { display:flex; gap:6px; }
+  .ract button { background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:7px; padding:5px 9px; font:inherit; font-size:12px; cursor:pointer; }
+  .ract button:hover { border-color:var(--accent); color:var(--accent); }
+  .empty { color:var(--muted); padding:40px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>🦞 claude-watch · 세션 목록</h1>
+    <span class="spacer"></span>
+    <input class="search" id="search" placeholder="제목·프로젝트·의사결정 검색…" />
+    <span class="sortbtns">
+      <button id="sortCreated" class="on">시작순</button>
+      <button id="sortUpdated">최근작업순</button>
+    </span>
+  </div>
+</header>
+<main id="view"><div class="empty">불러오는 중…</div></main>
+
+<script>
+let DATA = [];
+let SORT = "created"; // created | updated
+const view = document.getElementById("view");
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function rel(ms) {
+  if (!ms) return "";
+  let s = (Date.now() - ms) / 1000;
+  if (s < 60) return "방금";
+  const m = s/60; if (m < 60) return Math.floor(m) + "분 전";
+  const h = m/60; if (h < 24) return Math.floor(h) + "시간 전";
+  const d = h/24; if (d < 7) return Math.floor(d) + "일 전";
+  const t = new Date(ms); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`;
+}
+function dur(ms) {
+  if (!ms) return "";
+  let s = ms/1000; const d = Math.floor(s/86400); s -= d*86400; const h = Math.floor(s/3600); s -= h*3600; const m = Math.floor(s/60);
+  return d ? `${d}일 ${h}시간` : h ? `${h}시간 ${m}분` : `${m}분`;
+}
+const sortKey = (x) => SORT === "updated" ? (x.updatedAt||0) : (x.createdAt||0);
+
+function matches(x, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const hay = [x.title, x.project, x.firstPrompt, ...(x.decisions||[]).flatMap(d => [d.h, d.q, d.c])].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+
+function render() {
+  const q = document.getElementById("search").value.trim();
+  const items = DATA.filter(x => matches(x, q));
+  if (!items.length) { view.innerHTML = `<div class="empty">${DATA.length ? "검색 결과 없음" : "세션이 없습니다"}</div>`; return; }
+  // 프로젝트별 그룹
+  const groups = {};
+  for (const x of items) (groups[x.project] ??= []).push(x);
+  // 그룹 정렬: 그룹 내 최신 키 기준 desc
+  const projOrder = Object.keys(groups).sort((a,b) => Math.max(...groups[b].map(sortKey)) - Math.max(...groups[a].map(sortKey)));
+  view.innerHTML = projOrder.map(proj => {
+    const rows = groups[proj].sort((a,b) => sortKey(b) - sortKey(a));
+    return `<details class="proj" open>
+      <summary>${esc(proj)} <span class="count">${rows.length}개</span></summary>
+      ${rows.map(rowHtml).join("")}
+    </details>`;
+  }).join("");
+  bindRows();
+}
+
+function rowHtml(x) {
+  const s = x.stats || {};
+  const meta = [
+    `<span class="chip">${rel(SORT==="updated"?x.updatedAt:x.createdAt)}</span>`,
+    s.durationMs ? `<span class="chip">⏱ ${dur(s.durationMs)}</span>` : "",
+    s.decisions ? `<span class="chip">⚖ <b>${s.decisions}</b></span>` : "",
+    s.files ? `<span class="chip">📝 <b>${s.files}</b></span>` : "",
+    s.commits ? `<span class="chip">✅ <b>${s.commits}</b></span>` : "",
+  ].filter(Boolean).join("");
+  return `<div class="row" data-id="${x.id}">
+    <div class="rmain">
+      <div class="rtitle" data-title="${esc(x.title)}" title="클릭하여 제목 수정">${esc(x.title)}</div>
+      <div class="rmeta">${meta}</div>
+    </div>
+    <div class="ract">
+      <button data-act="open">열기</button>
+      <button data-act="export">📦</button>
+    </div>
+  </div>`;
+}
+
+function bindRows() {
+  view.querySelectorAll(".row").forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-act="open"]').onclick = () => { window.location.href = `/s/${id}`; };
+    row.querySelector('[data-act="export"]').onclick = async (e) => {
+      const b = e.target; b.disabled = true; b.textContent = "…";
+      try { const r = await fetch(`/export/${id}`); const d = await r.json(); alert(d.ok ? `내보냄:\n${d.path}` : "실패: " + d.error); }
+      catch (err) { alert("실패: " + err.message); } finally { b.disabled = false; b.textContent = "📦"; }
+    };
+    const t = row.querySelector(".rtitle");
+    t.onclick = async () => {
+      const cur = t.dataset.title;
+      const next = prompt("세션 제목 수정 (비우면 자동 제목으로 복귀)", cur);
+      if (next === null || next === cur) return;
+      await fetch(`/api/rename/${id}?title=${encodeURIComponent(next)}`);
+      const item = DATA.find(x => x.id === id);
+      if (item) { item.alias = next; item.title = next || item.aiTitle || item.firstPrompt || id.slice(0,8); }
+      render();
+    };
+  });
+}
+
+document.getElementById("search").oninput = render;
+document.getElementById("sortCreated").onclick = () => { SORT="created"; document.getElementById("sortCreated").classList.add("on"); document.getElementById("sortUpdated").classList.remove("on"); render(); };
+document.getElementById("sortUpdated").onclick = () => { SORT="updated"; document.getElementById("sortUpdated").classList.add("on"); document.getElementById("sortCreated").classList.remove("on"); render(); };
+
+fetch("/api/index").then(r => r.json()).then(d => { DATA = d; render(); }).catch(() => { view.innerHTML = `<div class="empty">불러오기 실패</div>`; });
+</script>
+</body>
+</html>

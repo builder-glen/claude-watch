@@ -26,7 +26,7 @@
   .usagebar b { color:var(--ink); font-weight:700; }
   .usagebar .cost { color:#ffb454; font-weight:700; }
   .usagebar .acct { color:#71717c; } .usagebar .acct b { color:#a9a9b4; }
-  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; text-decoration:none; display:inline-block; }
   .hbtn:hover { border-color:var(--accent); color:var(--accent); }
   .hbtn:disabled { opacity:.5; cursor:wait; }
   .status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:14px; }
@@ -156,6 +156,7 @@
 <header>
   <div class="topline">
     <h1>🦞 claude-watch</h1>
+    <a href="/" id="listLink" class="hbtn" title="전체 세션 목록으로">≡ 목록</a>
     <div class="usagebar" id="usagebar" title="이 세션 누적 토큰 · API 환산 추정 비용 (구독제면 실제 청구액 아님)">집계 중…</div>
     <button id="exportBtn" class="hbtn" title="이 세션을 자체완결 HTML 파일로 내보내기">📦 내보내기</button>
     <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
@@ -604,7 +605,7 @@ try { if (window.hljs) hljs.configure({ ignoreUnescapedHTML:true }); } catch {}
 document.getElementById("fabTop").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
 document.getElementById("fabBottom").onclick = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 const exportBtn = document.getElementById("exportBtn");
-if (EXPORT) { exportBtn.style.display = "none"; }
+if (EXPORT) { exportBtn.style.display = "none"; document.getElementById("listLink").style.display = "none"; }
 else exportBtn.onclick = async () => {
   exportBtn.disabled = true; const t = exportBtn.textContent; exportBtn.textContent = "내보내는 중…";
   try {

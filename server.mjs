@@ -14,7 +14,7 @@ import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { parseTranscript, summarizeUsage } from "./lib/parse.mjs";
+import { parseTranscript, summarizeUsage, extractDecisions, sessionStats, firstUserPrompt } from "./lib/parse.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -71,6 +71,68 @@ async function writeCache(id, kind, data) {
   try { await mkdir(CACHE_DIR, { recursive: true }); await writeFile(cachePath(id, kind), JSON.stringify(data)); } catch {}
 }
 
+// ── 세션 색인 (목록·검색용). 목록 열 때 mtime 비교로 바뀐 것만 갱신. ──
+const INDEX_PATH = join(CW_DIR, "index.json");
+const ALIAS_PATH = join(CW_DIR, "aliases.json"); // 사용자가 수정한 제목(영구, 색인 갱신에도 안 덮임)
+async function readJson(p, def) { try { return JSON.parse(await readFile(p, "utf8")); } catch { return def; } }
+async function writeJson(p, o) { try { await mkdir(CW_DIR, { recursive: true }); await writeFile(p, JSON.stringify(o)); } catch {} }
+
+// JSONL의 실제 cwd에서 프로젝트명(폴더명) 추출 (디렉토리명 뭉개짐 회피)
+function extractProject(text, fallback) {
+  for (const line of text.split("\n").slice(0, 200)) {
+    const m = line.match(/"cwd"\s*:\s*"([^"]+)"/);
+    if (m && m[1]) return m[1].split("/").filter(Boolean).pop() || fallback;
+  }
+  return fallback;
+}
+
+// JSONL의 ai-title(마지막 것) 추출
+function extractAiTitle(text) {
+  let t = "";
+  for (const line of text.split("\n")) {
+    if (!line.includes('"ai-title"')) continue;
+    try { const o = JSON.parse(line); if (o.type === "ai-title" && o.aiTitle) t = o.aiTitle; } catch {}
+  }
+  return t;
+}
+
+async function buildIndex() {
+  const sessions = await findSessions();
+  const cached = await readJson(INDEX_PATH, {});
+  const aliases = await readJson(ALIAS_PATH, {});
+  const out = {};
+  for (const s of sessions) {
+    const prev = cached[s.id];
+    if (prev && prev.updatedAt === s.mtime) {
+      out[s.id] = prev; // 안 바뀜 → 카드 재사용
+    } else {
+      try {
+        const text = await readFile(s.path, "utf8");
+        const events = parseTranscript(text);
+        const st = sessionStats(events);
+        out[s.id] = {
+          id: s.id, project: extractProject(text, s.project), updatedAt: s.mtime,
+          createdAt: st.firstTs ? new Date(st.firstTs).getTime() : s.mtime,
+          aiTitle: extractAiTitle(text),
+          firstPrompt: firstUserPrompt(events),
+          stats: {
+            durationMs: (st.firstTs && st.lastTs) ? (new Date(st.lastTs) - new Date(st.firstTs)) : 0,
+            decisions: st.decisions, files: st.files, commits: st.commits,
+          },
+          decisions: extractDecisions(events).map((d) => ({ h: d.header, q: d.question, c: d.chosen })),
+        };
+      } catch {
+        out[s.id] = prev || { id: s.id, project: s.project, updatedAt: s.mtime, createdAt: s.mtime, aiTitle: "", firstPrompt: "", stats: {}, decisions: [] };
+      }
+    }
+    // 제목 해석: 별칭 > ai-title > 첫 질문 (별칭은 매번 현재값 반영)
+    out[s.id].alias = aliases[s.id] || "";
+    out[s.id].title = aliases[s.id] || out[s.id].aiTitle || out[s.id].firstPrompt || s.id.slice(0, 8);
+  }
+  await writeJson(INDEX_PATH, out);
+  return out;
+}
+
 async function readRateLimits() {
   try {
     const o = JSON.parse(await readFile(join(CW_DIR, "statusline-input.json"), "utf8"));
@@ -85,6 +147,7 @@ async function readRateLimits() {
 
 // ── 라우팅 ───────────────────────────────────────────────────────────
 const VIEWER = await readFile(join(__dirname, "public", "viewer.html"), "utf8");
+const LIST = await readFile(join(__dirname, "public", "list.html"), "utf8");
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -92,10 +155,26 @@ const server = http.createServer(async (req, res) => {
 
   if (path === "/health") return send(res, 200, "text/plain", "ok");
 
-  // 세션 목록
+  // 세션 목록 페이지 (리스트 페이지) — 클라이언트가 /api/index 를 받아 렌더
   if (path === "/") {
-    const sessions = await findSessions();
-    return send(res, 200, "text/html; charset=utf-8", renderIndex(sessions));
+    return send(res, 200, "text/html; charset=utf-8", LIST);
+  }
+
+  // 색인 JSON (목록·검색·CLI 공용). 열 때 mtime 비교로 바뀐 것만 갱신.
+  if (path === "/api/index") {
+    const idx = await buildIndex();
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(Object.values(idx)));
+  }
+
+  // 제목 수정(별칭) — 영구 저장
+  const mRename = path.match(/^\/api\/rename\/([\w-]+)$/);
+  if (mRename) {
+    const id = mRename[1];
+    const title = (url.searchParams.get("title") || "").slice(0, 120).trim();
+    const aliases = await readJson(ALIAS_PATH, {});
+    if (title) aliases[id] = title; else delete aliases[id];
+    await writeJson(ALIAS_PATH, aliases);
+    return send(res, 200, "application/json", JSON.stringify({ ok: true, id, title }));
   }
 
   // 세션 뷰어 셸 (sessionId 주입)

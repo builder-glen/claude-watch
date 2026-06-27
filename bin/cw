@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# claude-watch CLI — 세션 목록/열기/제목수정
+#   cw history          현재 세션 목록(터미널) + '전체 목록 페이지' 링크
+#   cw web              전체 목록 페이지를 브라우저로 열기
+#   cw open <n>         n번 세션을 브라우저로 열기
+#   cw rename <n> "제목"  n번 세션 제목 수정
+PORT="${CW_PORT:-4317}"
+[ -f "$HOME/.claude-watch/port" ] && PORT="$(cat "$HOME/.claude-watch/port")"
+BASE="http://localhost:$PORT"
+LAST="$HOME/.claude-watch/.last-list"
+mkdir -p "$HOME/.claude-watch" 2>/dev/null
+
+cmd="${1:-history}"; shift 2>/dev/null || true
+
+case "$cmd" in
+  history)
+    json="$(curl -s --max-time 8 "$BASE/api/index")" || { echo "서버 미응답 ($BASE). claude-watch 서버가 떠 있는지 확인."; exit 1; }
+    [ -z "$json" ] && { echo "세션 없음 또는 서버 미응답"; exit 1; }
+    printf '%s' "$json" | node -e '
+      let d=""; process.stdin.on("data",c=>d+=c).on("end",()=>{
+        const fs=require("fs"), os=require("os"), path=require("path");
+        let a; try { a=JSON.parse(d); } catch { console.log("색인 파싱 실패"); process.exit(1); }
+        a.sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
+        fs.writeFileSync(path.join(os.homedir(),".claude-watch",".last-list"), a.map(x=>x.id).join("\n"));
+        const rel=(ms)=>{ if(!ms)return""; let s=(Date.now()-ms)/1000; const m=s/60,h=m/60,dd=h/24;
+          return s<60?"방금":m<60?Math.floor(m)+"분전":h<24?Math.floor(h)+"시간전":dd<7?Math.floor(dd)+"일전":new Date(ms).toISOString().slice(0,10); };
+        a.slice(0,30).forEach((x,i)=>{
+          const proj=(x.project||"").split("/").pop();
+          const st=x.stats||{}; const tags=[st.decisions?`⚖${st.decisions}`:"",st.files?`📝${st.files}`:""].filter(Boolean).join(" ");
+          console.log(`${String(i+1).padStart(2)}. [${proj}] ${(x.title||"").slice(0,46)}  ${rel(x.createdAt)} ${tags}`);
+        });
+        if(a.length>30) console.log(`   … 외 ${a.length-30}개 (전체는 목록 페이지)`);
+      });'
+    printf "\n\033]8;;%s\033\\🦞 전체 목록 페이지로 보기 → %s\033]8;;\033\\\n" "$BASE/" "$BASE/"
+    echo "   (cw open <번호> 로 열기 · cw web 으로 페이지 열기)"
+    ;;
+  web)
+    open "$BASE/" 2>/dev/null || echo "$BASE/" ;;
+  open)
+    n="$1"; id="$(sed -n "${n}p" "$LAST" 2>/dev/null)"
+    [ -n "$id" ] && { open "$BASE/s/$id" 2>/dev/null || echo "$BASE/s/$id"; } || echo "번호 $n 없음 — 먼저 'cw history' 실행" ;;
+  rename)
+    n="$1"; shift 2>/dev/null; title="$*"; id="$(sed -n "${n}p" "$LAST" 2>/dev/null)"
+    [ -z "$id" ] && { echo "번호 $n 없음 — 먼저 'cw history'"; exit 1; }
+    enc="$(node -e 'console.log(encodeURIComponent(process.argv[1]||""))' "$title")"
+    curl -s "$BASE/api/rename/$id?title=$enc" >/dev/null && echo "✓ #$n 제목 변경: $title" ;;
+  *)
+    echo "사용법: cw history | cw web | cw open <n> | cw rename <n> \"제목\"" ;;
+esac
