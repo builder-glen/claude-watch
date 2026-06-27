@@ -86,6 +86,15 @@ function extractProject(text, fallback) {
   return fallback;
 }
 
+// entrypoint 추출 — "cli"=사람 인터랙티브, "sdk-cli"=프로그램/앱 자동(노이즈)
+function extractEntrypoint(text) {
+  for (const line of text.split("\n").slice(0, 200)) {
+    const m = line.match(/"entrypoint"\s*:\s*"([^"]+)"/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
 // JSONL의 ai-title(마지막 것) 추출
 function extractAiTitle(text) {
   let t = "";
@@ -112,6 +121,7 @@ async function buildIndex() {
         const st = sessionStats(events);
         out[s.id] = {
           id: s.id, project: extractProject(text, s.project), updatedAt: s.mtime,
+          interactive: extractEntrypoint(text) === "cli",
           createdAt: st.firstTs ? new Date(st.firstTs).getTime() : s.mtime,
           aiTitle: extractAiTitle(text),
           firstPrompt: firstUserPrompt(events),

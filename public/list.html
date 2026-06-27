@@ -16,7 +16,7 @@
   h1 { font-size:15px; margin:0; font-weight:700; }
   .spacer { flex:1; }
   .sortbtns button, .ghost { background:var(--card); color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:6px 12px; font:inherit; font-size:12px; cursor:pointer; }
-  .sortbtns button.on { color:var(--accent); border-color:var(--accent); }
+  .sortbtns button.on, .ghost.on { color:var(--accent); border-color:var(--accent); }
   input.search { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font:inherit; font-size:13px; min-width:240px; }
   main { max-width:980px; margin:0 auto; padding:20px; }
   .proj { margin:18px 0; }
@@ -49,6 +49,7 @@
       <button id="sortCreated" class="on">시작순</button>
       <button id="sortUpdated">최근작업순</button>
     </span>
+    <button id="toggleAll" class="ghost" title="앱·SDK 자동 세션 포함 여부">전체 보기</button>
   </div>
 </header>
 <main id="view"><div class="empty">불러오는 중…</div></main>
@@ -56,6 +57,7 @@
 <script>
 let DATA = [];
 let SORT = "created"; // created | updated
+let SHOW_ALL = false; // false=사람(cli) 세션만, true=앱/SDK 자동까지
 const view = document.getElementById("view");
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
@@ -84,7 +86,7 @@ function matches(x, q) {
 
 function render() {
   const q = document.getElementById("search").value.trim();
-  const items = DATA.filter(x => matches(x, q));
+  const items = DATA.filter(x => (SHOW_ALL || x.interactive) && matches(x, q));
   if (!items.length) { view.innerHTML = `<div class="empty">${DATA.length ? "검색 결과 없음" : "세션이 없습니다"}</div>`; return; }
   // 프로젝트별 그룹
   const groups = {};
@@ -145,6 +147,7 @@ function bindRows() {
 }
 
 document.getElementById("search").oninput = render;
+document.getElementById("toggleAll").onclick = (e) => { SHOW_ALL = !SHOW_ALL; e.target.textContent = SHOW_ALL ? "사람 세션만" : "전체 보기"; e.target.classList.toggle("on", SHOW_ALL); render(); };
 document.getElementById("sortCreated").onclick = () => { SORT="created"; document.getElementById("sortCreated").classList.add("on"); document.getElementById("sortUpdated").classList.remove("on"); render(); };
 document.getElementById("sortUpdated").onclick = () => { SORT="updated"; document.getElementById("sortUpdated").classList.add("on"); document.getElementById("sortCreated").classList.remove("on"); render(); };
 

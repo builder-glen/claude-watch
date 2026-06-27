@@ -20,6 +20,7 @@ case "$cmd" in
       let d=""; process.stdin.on("data",c=>d+=c).on("end",()=>{
         const fs=require("fs"), os=require("os"), path=require("path");
         let a; try { a=JSON.parse(d); } catch { console.log("색인 파싱 실패"); process.exit(1); }
+        a = a.filter(x=>x.interactive);  // 사람(cli) 세션만 — 앱/SDK 자동 제외
         a.sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
         fs.writeFileSync(path.join(os.homedir(),".claude-watch",".last-list"), a.map(x=>x.id).join("\n"));
         const rel=(ms)=>{ if(!ms)return""; let s=(Date.now()-ms)/1000; const m=s/60,h=m/60,dd=h/24;
