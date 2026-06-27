@@ -21,14 +21,21 @@
   header { position:sticky; top:0; z-index:5; background:rgba(21,21,26,.92);
     backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:10px 20px; }
   .topline { display:flex; gap:10px; align-items:center; }
-  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header h1 { font-size:15px; margin:0; font-weight:600; font-family:var(--mono); } /* 로고: JetBrains Mono 토큰 */
   .usagebar { margin-left:auto; font-size:12px; color:var(--muted); font-family:var(--mono); white-space:nowrap; }
   .usagebar b { color:var(--ink); font-weight:700; }
   .usagebar .cost { color:#ffb454; font-weight:700; }
   .usagebar .acct { color:#71717c; } .usagebar .acct b { color:#a9a9b4; }
-  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; font-family:var(--mono); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+  .hbtn svg { width:14px; height:14px; display:block; flex:none; } /* Figma listIcon/exportIcon */
   .hbtn:hover { border-color:var(--accent); color:var(--accent); }
   .hbtn:disabled { opacity:.5; cursor:wait; }
+  .topline > .hbtn:first-child { margin-left:0; } /* 맨 왼쪽 List 버튼은 여백 제거 */
+  /* 버전 라벨 (Figma 디자인 반영): latest일 때만 "/latest"를 네온그린으로 */
+  .ver { font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .ver .latest { color:#5af78e; } /* neon/green */
+  .topdiv { color:var(--muted); font-family:var(--mono); }
+  .sessname { font-size:12px; color:#f4f89d; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; min-width:0; max-width:520px; } /* neon/yellow */
   .status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:14px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#555; }
   .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
@@ -155,11 +162,14 @@
 <body>
 <header>
   <div class="topline">
+    <a href="/" id="listLink" class="hbtn" title="전체 세션 목록으로"><svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 8.66667H3.33333V7.33333H2V8.66667ZM2 11.3333H3.33333V10H2V11.3333ZM2 6H3.33333V4.66667H2V6ZM4.66667 8.66667H14V7.33333H4.66667V8.66667ZM4.66667 11.3333H14V10H4.66667V11.3333ZM4.66667 4.66667V6H14V4.66667H4.66667Z" fill="currentColor"/></svg>List</a>
     <h1>🦞 claude-watch</h1>
-    <a href="/" id="listLink" class="hbtn" title="전체 세션 목록으로">≡ 목록</a>
+    <span class="ver" id="ver"></span>
+    <span class="topdiv" id="topDiv" hidden>|</span>
+    <span class="sessname" id="sessName"></span>
     <div class="usagebar" id="usagebar" title="이 세션 누적 토큰 · API 환산 추정 비용 (구독제면 실제 청구액 아님)">집계 중…</div>
-    <button id="exportBtn" class="hbtn" title="이 세션을 자체완결 HTML 파일로 내보내기">📦 내보내기</button>
     <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
+    <button id="exportBtn" class="hbtn" title="이 세션을 자체완결 HTML 파일로 내보내기"><svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11.3 3.97867L10.3573 4.92133L8.66667 3.23067V11.3613H7.33333V3.23133L5.64333 4.92133L4.7 3.97867L8 0.678667L11.3 3.97867Z" fill="currentColor"/><path d="M3.33333 13.988V7.32133H6V5.988H2V15.3213H14V5.988H10V7.32133H12.6667V13.988H3.33333Z" fill="currentColor"/></svg><span class="lbl">Export</span></button>
   </div>
   <div class="tabs" id="tabs"></div>
 </header>
@@ -184,6 +194,26 @@ const dot = document.getElementById("dot");
 const stat = document.getElementById("stat");
 const usagebar = document.getElementById("usagebar");
 let mermaidSeq = 0;
+
+// 버전 라벨 (Figma 디자인 반영): latest일 때만 "/latest"를 네온그린으로 표기
+// ※ 실제 최신 여부 판정(레지스트리/서버 조회)은 후속 — 우선 표시 구조만
+const CW_VERSION = "1.00";
+const CW_IS_LATEST = true;
+(function renderVersion() {
+  const el = document.getElementById("ver");
+  if (!el) return;
+  el.innerHTML = `${CW_VERSION}v` + (CW_IS_LATEST ? `<span class="latest">/latest</span>` : "");
+})();
+
+// 세션 이름(제목): 첫 사용자 요청 한 줄 (Figma sessionName 슬롯). 값 있을 때만 divider 표시
+function renderSessionName() {
+  const el = document.getElementById("sessName"), dv = document.getElementById("topDiv");
+  if (!el) return;
+  const u = EVENTS.find(e => e.kind === "user_text" && e.text && !e.text.startsWith("[") && e.text.length < 2000);
+  const name = u ? u.text.split("\n")[0].slice(0, 60).trim() : "";
+  el.textContent = name;
+  if (dv) dv.hidden = !name;
+}
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const clampWrap = (inner) => `<div class="clamp">${inner}</div>`;
@@ -223,10 +253,10 @@ function highlightCode() {
 
 // ── 탭 정의 ──────────────────────────────────────────────
 const TABS = [
-  { id: "raw",     label: "Raw 대화", render: renderRaw },
-  { id: "summary", label: "세션 요약", render: renderSummary },
-  { id: "diagram", label: "아키텍처/구조", render: renderDiagram },
-  { id: "diff",    label: "코드 변경", render: renderDiff },
+  { id: "raw",     label: "Raw", render: renderRaw },
+  { id: "summary", label: "Summary", render: renderSummary },
+  { id: "diagram", label: "Architecture", render: renderDiagram },
+  { id: "diff",    label: "Changes", render: renderDiff },
 ];
 function renderTabs() {
   document.getElementById("tabs").innerHTML = TABS.map(t =>
@@ -607,25 +637,26 @@ document.getElementById("fabBottom").onclick = () => window.scrollTo({ top: docu
 const exportBtn = document.getElementById("exportBtn");
 if (EXPORT) { exportBtn.style.display = "none"; document.getElementById("listLink").style.display = "none"; }
 else exportBtn.onclick = async () => {
-  exportBtn.disabled = true; const t = exportBtn.textContent; exportBtn.textContent = "내보내는 중…";
+  const lbl = exportBtn.querySelector(".lbl"); exportBtn.disabled = true; const t = lbl.textContent; lbl.textContent = "내보내는 중…";
   try {
     const r = await fetch(`/export/${SESSION}`); const d = await r.json();
     if (d.error) throw new Error(d.error);
     stat.textContent = `저장됨: ${d.file}`;
     alert(`내보냈습니다:\n${d.path}`);
   } catch (e) { alert("내보내기 실패: " + e.message); }
-  finally { exportBtn.disabled = false; exportBtn.textContent = t; }
+  finally { exportBtn.disabled = false; lbl.textContent = t; }
 };
 renderTabs(); draw();
 if (EXPORT) {
   stat.textContent = "내보낸 스냅샷";
   updateUsageBar(EXPORT.usage);
+  renderSessionName();
 } else {
   const es = new EventSource(`/events/${SESSION}`);
   es.addEventListener("snapshot", (m) => {
     EVENTS = JSON.parse(m.data);
     dot.classList.add("live"); stat.textContent = "실시간 연결됨";
-    draw();
+    draw(); renderSessionName();
   });
   es.addEventListener("usage", (m) => { try { updateUsageBar(JSON.parse(m.data)); } catch {} });
   es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
