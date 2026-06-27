@@ -7,7 +7,7 @@
 //  • GET /health        서버 생존 확인(statusLine이 ping)
 
 import http from "node:http";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, mkdir, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, basename } from "node:path";
@@ -60,6 +60,17 @@ async function eventsForFile(file) {
 // 구독 한도(rate_limits)는 statusLine stdin에만 있다 → statusline.sh가 떨군 파일에서 읽는다.
 // 계정 전체 기준(세션별 아님). 데이터 없으면 null.
 const CW_DIR = join(homedir(), ".claude-watch");
+const CACHE_DIR = join(CW_DIR, "cache");
+
+// AI 결과 캐시: ~/.claude-watch/cache/<sessionId>-<kind>.json = { text, usage, atEventCount }
+const cachePath = (id, kind) => join(CACHE_DIR, `${id}-${kind}.json`);
+async function readCache(id, kind) {
+  try { return JSON.parse(await readFile(cachePath(id, kind), "utf8")); } catch { return null; }
+}
+async function writeCache(id, kind, data) {
+  try { await mkdir(CACHE_DIR, { recursive: true }); await writeFile(cachePath(id, kind), JSON.stringify(data)); } catch {}
+}
+
 async function readRateLimits() {
   try {
     const o = JSON.parse(await readFile(join(CW_DIR, "statusline-input.json"), "utf8"));
@@ -111,7 +122,15 @@ const server = http.createServer(async (req, res) => {
     return startSse(req, res, file);
   }
 
-  // AI 생성 (요약/다이어그램) — 기존 Claude Code 인증으로 headless 호출, 별도 키 불필요
+  // 캐시 읽기 (생성 안 함) — 뷰어가 탭 열 때 호출, 있으면 즉시 표시
+  const mCache = path.match(/^\/api\/ai-cache\/(summary|diagram)\/([\w-]+)$/);
+  if (mCache) {
+    const [, kind, id] = mCache;
+    const c = await readCache(id, kind);
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(c || { cached: false }));
+  }
+
+  // AI 생성 (요약/다이어그램) — 기존 Claude Code 인증으로 headless 호출, 별도 키 불필요. 결과는 캐시에 저장.
   const mAi = path.match(/^\/api\/ai\/(summary|diagram)\/([\w-]+)$/);
   if (mAi) {
     const [, kind, id] = mAi;
@@ -120,6 +139,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const events = await eventsForFile(file);
       const out = await runClaude(kind, buildDigest(events));
+      out.atEventCount = events.length;
+      await writeCache(id, kind, out);
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify(out));
     } catch (e) {
       return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));

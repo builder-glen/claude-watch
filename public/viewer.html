@@ -445,6 +445,7 @@ function renderSummary() {
     </div>
   `;
   document.getElementById("aiSum").onclick = (ev) => callAI("summary", ev.target, document.getElementById("aiSumOut"));
+  loadCachedAI("summary", document.getElementById("aiSumOut"), document.getElementById("aiSum"), false);
 }
 
 // ── 탭3: 아키텍처/구조 ───────────────────────────────────
@@ -474,6 +475,7 @@ function renderDiagram() {
   for (const [f, v] of files) def += `  style ${ids[f]} fill:${v.kind==="new"?"#1f3a2a":"#1f2f4a"},stroke:#666,color:#e7e7ec\n`;
   renderMermaid(document.getElementById("mechMap"), files.size ? def : "flowchart LR\n  x[변경 없음]");
   document.getElementById("aiDia").onclick = (ev) => callAI("diagram", ev.target, document.getElementById("aiDiaOut"), true);
+  loadCachedAI("diagram", document.getElementById("aiDiaOut"), document.getElementById("aiDia"), true);
 }
 
 async function renderMermaid(el, def) {
@@ -543,6 +545,30 @@ async function callAI(kind, btn, out, isDiagram) {
   } finally {
     btn.disabled = false; btn.textContent = label;
   }
+}
+
+// 탭 열 때 캐시된 AI 결과를 즉시 표시 (생성 X, 토큰 0). stale면 재생성 힌트.
+async function loadCachedAI(kind, out, btn, isDiagram) {
+  try {
+    const r = await fetch(`/api/ai-cache/${kind}/${SESSION}`);
+    const data = await r.json();
+    if (!data || data.cached === false || !data.text) return;
+    out.style.display = "block";
+    if (isDiagram) {
+      out.className = "mermaid";
+      const def = data.text.replace(/^```mermaid\s*/i, "").replace(/```$/, "").trim();
+      renderMermaid(out, def);
+    } else {
+      out.className = "aiout md"; out.innerHTML = md(data.text); highlightCode();
+    }
+    const usage = usageEl(out); usage.innerHTML = usageLine(data.usage);
+    btn.textContent = isDiagram ? "↻ AI 다이어그램 재생성" : "↻ AI 요약 재생성";
+    if (data.atEventCount != null && data.atEventCount < EVENTS.length) {
+      const hint = document.createElement("div"); hint.className = "hint"; hint.style.color = "#d29922";
+      hint.textContent = `⚠ 캐시 생성 이후 작업이 더 진행됐어요 (이벤트 ${data.atEventCount} → ${EVENTS.length}). ↻ 재생성하면 최신 반영.`;
+      usage.after(hint);
+    }
+  } catch {}
 }
 
 // ── 상단 토큰바: 이 세션 토큰(안 리셋) + 계정 한도%(리셋) 명확히 분리 ──
