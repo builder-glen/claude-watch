@@ -74,6 +74,7 @@ async function writeCache(id, kind, data) {
 // ── 세션 색인 (목록·검색용). 목록 열 때 mtime 비교로 바뀐 것만 갱신. ──
 const INDEX_PATH = join(CW_DIR, "index.json");
 const ALIAS_PATH = join(CW_DIR, "aliases.json"); // 사용자가 수정한 제목(영구, 색인 갱신에도 안 덮임)
+const PROJECT_OVERRIDE_PATH = join(CW_DIR, "project-overrides.json"); // 사용자가 재지정한 프로젝트(영구, 원본 로그 불변)
 async function readJson(p, def) { try { return JSON.parse(await readFile(p, "utf8")); } catch { return def; } }
 async function writeJson(p, o) { try { await mkdir(CW_DIR, { recursive: true }); await writeFile(p, JSON.stringify(o)); } catch {} }
 
@@ -109,18 +110,20 @@ async function buildIndex() {
   const sessions = await findSessions();
   const cached = await readJson(INDEX_PATH, {});
   const aliases = await readJson(ALIAS_PATH, {});
+  const overrides = await readJson(PROJECT_OVERRIDE_PATH, {});
   const out = {};
   for (const s of sessions) {
     const prev = cached[s.id];
     if (prev && prev.updatedAt === s.mtime) {
       out[s.id] = prev; // 안 바뀜 → 카드 재사용
+      if (out[s.id].projectRaw == null) out[s.id].projectRaw = out[s.id].project; // 구버전 캐시 마이그레이션
     } else {
       try {
         const text = await readFile(s.path, "utf8");
         const events = parseTranscript(text);
         const st = sessionStats(events);
         out[s.id] = {
-          id: s.id, project: extractProject(text, s.project), updatedAt: s.mtime,
+          id: s.id, projectRaw: extractProject(text, s.project), updatedAt: s.mtime,
           interactive: extractEntrypoint(text) === "cli",
           createdAt: st.firstTs ? new Date(st.firstTs).getTime() : s.mtime,
           aiTitle: extractAiTitle(text),
@@ -132,9 +135,12 @@ async function buildIndex() {
           decisions: extractDecisions(events).map((d) => ({ h: d.header, q: d.question, c: d.chosen })),
         };
       } catch {
-        out[s.id] = prev || { id: s.id, project: s.project, updatedAt: s.mtime, createdAt: s.mtime, aiTitle: "", firstPrompt: "", stats: {}, decisions: [] };
+        out[s.id] = prev || { id: s.id, projectRaw: s.project, updatedAt: s.mtime, createdAt: s.mtime, aiTitle: "", firstPrompt: "", stats: {}, decisions: [] };
       }
     }
+    // 프로젝트 해석: 재지정(override) > cwd에서 뽑은 원래값 (재지정은 매번 현재값 반영, 원본 로그 불변)
+    out[s.id].projectRaw = out[s.id].projectRaw || s.project;
+    out[s.id].project = overrides[s.id] || out[s.id].projectRaw;
     // 제목 해석: 별칭 > ai-title > 첫 질문 (별칭은 매번 현재값 반영)
     out[s.id].alias = aliases[s.id] || "";
     out[s.id].title = aliases[s.id] || out[s.id].aiTitle || out[s.id].firstPrompt || s.id.slice(0, 8);
@@ -192,6 +198,17 @@ const server = http.createServer(async (req, res) => {
     if (title) aliases[id] = title; else delete aliases[id];
     await writeJson(ALIAS_PATH, aliases);
     return send(res, 200, "application/json", JSON.stringify({ ok: true, id, title }));
+  }
+
+  // 프로젝트 재지정(override) — 영구 저장. 원본 로그는 안 건드리고 매핑만 저장.
+  const mProject = path.match(/^\/api\/setproject\/([\w-]+)$/);
+  if (mProject) {
+    const id = mProject[1];
+    const project = (url.searchParams.get("project") || "").slice(0, 80).trim();
+    const ov = await readJson(PROJECT_OVERRIDE_PATH, {});
+    if (project) ov[id] = project; else delete ov[id];
+    await writeJson(PROJECT_OVERRIDE_PATH, ov);
+    return send(res, 200, "application/json", JSON.stringify({ ok: true, id, project }));
   }
 
   // 세션 뷰어 셸 (sessionId 주입)

@@ -33,7 +33,7 @@ case "$cmd" in
         if(a.length>30) console.log(`   … 외 ${a.length-30}개 (전체는 목록 페이지)`);
       });'
     printf "\n\033]8;;%s\033\\🦞 전체 목록 페이지로 보기 → %s\033]8;;\033\\\n" "$BASE/" "$BASE/"
-    echo "   (cw open <번호> 로 열기 · cw web 으로 페이지 열기)"
+    echo "   (cw open <번호> 열기 · cw web 페이지 · cw project <번호> \"이름\" 프로젝트 재지정)"
     ;;
   web)
     open "$BASE/" 2>/dev/null || echo "$BASE/" ;;
@@ -45,6 +45,11 @@ case "$cmd" in
     [ -z "$id" ] && { echo "번호 $n 없음 — 먼저 'cw history'"; exit 1; }
     enc="$(node -e 'console.log(encodeURIComponent(process.argv[1]||""))' "$title")"
     curl -s "$BASE/api/rename/$id?title=$enc" >/dev/null && echo "✓ #$n 제목 변경: $title" ;;
+  project)
+    n="$1"; shift 2>/dev/null; proj="$*"; id="$(sed -n "${n}p" "$LAST" 2>/dev/null)"
+    [ -z "$id" ] && { echo "번호 $n 없음 — 먼저 'cw history'"; exit 1; }
+    enc="$(node -e 'console.log(encodeURIComponent(process.argv[1]||""))' "$proj")"
+    curl -s "$BASE/api/setproject/$id?project=$enc" >/dev/null && echo "✓ #$n 프로젝트 재지정: ${proj:-(해제)}" ;;
   *)
-    echo "사용법: cw history | cw web | cw open <n> | cw rename <n> \"제목\"" ;;
+    echo "사용법: cw history | cw web | cw open <n> | cw rename <n> \"제목\" | cw project <n> \"프로젝트명\"" ;;
 esac
