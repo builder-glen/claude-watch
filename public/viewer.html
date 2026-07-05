@@ -61,8 +61,16 @@
   /* 사람=우측 정렬 · Claude=좌측(기본), 두 버블 모두 카드형으로 통일 */
   .ev.user_text { display:flex; flex-direction:column; align-items:flex-end; }
   .ev.user_text .bubble, .ev.user_text > details { max-width:80%; }
+  /* Claude도 flex → 내용 길이에 맞춰 가로폭 조절(항상 넓게 퍼지지 않도록) */
+  .ev.assistant_text { display:flex; flex-direction:column; align-items:flex-start; }
   .user_text .bubble { background:#1d2740; border:1px solid #2c3a5c; white-space:pre-wrap; text-align:left; border-top-right-radius:0; }
   .user_text .attach { font-size:12px; color:var(--muted); margin-top:5px; font-family:var(--mono); }
+  /* 사용자 입력: 기본 10줄까지 표시, 넘으면 '펼치기' */
+  .uctext.uclamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:10; overflow:hidden; }
+  .uctext.uclamp.open { display:block; -webkit-line-clamp:unset; overflow:visible; }
+  .uc-toggle { align-self:flex-end; margin-top:4px; background:none; border:none; color:var(--accent);
+    font:12px var(--mono); cursor:pointer; padding:2px 4px; }
+  .uc-toggle:hover { text-decoration:underline; }
   .assistant_text .bubble { background:var(--card); border:1px solid var(--line); border-top-left-radius:0; }
   /* 말풍선 꼬리: 2겹 border-삼각형(뒤=테두리색, 앞=채움색) → 버블 border와 자연 연결 */
   /* Claude(좌상단): ::before=테두리, ::after=채움 */
@@ -93,7 +101,7 @@
   .md blockquote { margin:.5em 0; padding-left:10px; border-left:3px solid var(--line); color:var(--muted); }
   .md table { border-collapse:collapse; margin:.5em 0; font-size:.95em; }
   .md th, .md td { border:1px solid var(--line); padding:4px 8px; }
-  .md code { font-family:var(--mono); font-size:.92em; background:#2a2733; padding:1px 5px; border-radius:4px; color:#9AEDFE; }
+  .md code { font-family:var(--mono); font-size:.92em; background:#2a2733; padding:1px 5px; border-radius:4px; color:#CE9178; }
   .md pre { background:var(--code-bg); padding:12px 14px; border-radius:8px; overflow:auto; margin:.6em 0; }
   .md pre code { background:transparent; padding:0; font-size:12.5px; }
   /* 마크다운 펜스 코드블록: 네온 시안으로 균일 처리(토큰 색 덮어쓰기 방지) */
@@ -137,7 +145,8 @@
   details.result[open] > summary::before,
   details.dalts[open] > summary::before { transform:rotate(90deg); }
   .tool .tbody { border-top:1px solid var(--line); }
-  /* AskUserQuestion 가독형 */
+  /* AskUserQuestion 가독형 (도구 그룹과 동일한 어두운 톤) */
+  .tool.ask { background:#131317; border-color:rgba(255,255,255,.05); }
   .tool.ask .aq { padding:10px 14px; border-top:1px dashed var(--line); }
   .tool.ask .aq:first-child { border-top:none; }
   .tool.ask .aqt { font-weight:600; font-size:13px; margin-bottom:7px; }
@@ -159,6 +168,41 @@
   .sysnote .systext { min-width:0; color:var(--muted); font-family:var(--mono); font-size:11px;
     opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tool.ask .adesc { color:var(--muted); font-size:12px; margin-top:3px; font-weight:400; }
+
+  /* 도구 그룹(A+C): 연속 도구 호출을 한 컨테이너로 묶고 레일 타임라인으로 표시 */
+  /* 말풍선(--card)보다 어둡고 낮은 채도 → 대화보다 한 단계 아래로 */
+  details.toolgroup { background:#131317; border:1px solid rgba(255,255,255,.05); border-radius:12px; margin:10px 0; overflow:hidden; }
+  details.toolgroup > summary.tg-head { display:flex; align-items:center; gap:8px; padding:9px 14px;
+    font:12px var(--mono); color:var(--muted); cursor:pointer; list-style:none; background:rgba(0,0,0,.18); }
+  .tg-head .tg-cnt { color:var(--ink); font-weight:700; }
+  .tg-head .tg-ok { color:#5fcf86; } .tg-head .tg-err { color:#ef7d7d; }
+  .tg-head .tg-icons { margin-left:6px; opacity:.7; font-size:11px; letter-spacing:1px; }
+  .tg-head .tg-caret { margin-left:auto; color:var(--ink); opacity:.6; font-size:14px; transition:transform .15s; }
+  details.toolgroup[open] > summary.tg-head .tg-caret { transform:rotate(90deg); }
+  details.toolgroup[open] > summary.tg-head { border-bottom:1px solid rgba(255,255,255,.05); }
+  /* 레일: 세로선이 노드 중심(x=18)을 관통 */
+  .ac-rail { position:relative; padding:6px 12px 8px 30px; }
+  .ac-rail::before { content:""; position:absolute; left:17px; top:12px; bottom:12px; width:2px; background:var(--line); }
+  .ac-row { position:relative; display:flex; align-items:center; gap:10px; padding:6px 8px;
+    border-radius:8px; cursor:pointer; list-style:none; }
+  .ac-row.norow { cursor:default; }
+  .ac-row:hover { background:rgba(255,255,255,.04); }
+  .ac-row::before { content:""; position:absolute; left:-17px; top:50%; transform:translateY(-50%);
+    width:6px; height:6px; border-radius:50%; background:var(--bg); border:2px solid #5fcf86; }
+  .ac-item.err > .ac-row::before { border-color:#ef7d7d; }
+  .ac-ic { font-size:13px; width:16px; text-align:center; flex:none; }
+  .ac-nm { font:600 12.5px var(--mono); flex:none; min-width:74px; }
+  .ac-pv { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    color:var(--muted); font:12px var(--mono); }
+  .ac-row .ts { flex:none; font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .ac-chk { color:#5fcf86; font:700 14px/1 var(--mono); flex:none; }
+  .ac-x { color:#ef7d7d; font:700 14px/1 var(--mono); flex:none; }
+  .ac-detail { padding:2px 10px 10px; }
+  /* 상세는 전체 펼침(토글 없음), 길면 스크롤 대신 클립(overflow:hidden) */
+  .ac-detail pre.code, .ac-detail .diff, .ac-result { max-height:300px; overflow:hidden; }
+  .ac-result { margin:6px 0 0; padding:8px 12px; background:var(--code-bg); border:1px solid var(--line);
+    border-radius:8px; font:11.5px/1.5 var(--mono); color:#9a9aa4; white-space:pre-wrap; word-break:break-word; }
+  .ac-result.err { color:#f0a39a; border-color:#5c2e2e; }
 
   /* 요약 탭 */
   .stats { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 18px; }
@@ -327,7 +371,23 @@ function renderTabs() {
   document.querySelectorAll("[data-tab]").forEach(b =>
     b.onclick = () => { TAB = b.dataset.tab; renderTabs(); draw(); });
 }
-function draw() { TABS.find(t => t.id === TAB).render(); highlightCode(); applyClamps(); }
+function draw() { TABS.find(t => t.id === TAB).render(); highlightCode(); applyClamps(); applyUserClamps(); }
+// 사용자 입력 버블: 10줄 초과 시 '펼치기' 버튼 부착
+function applyUserClamps() {
+  view.querySelectorAll(".uctext.uclamp:not([data-uc])").forEach((el) => {
+    el.setAttribute("data-uc", "1");
+    if (el.scrollHeight <= el.clientHeight + 2) { el.classList.remove("uclamp"); return; }
+    const bubble = el.closest(".bubble") || el;
+    const btn = document.createElement("button");
+    btn.className = "uc-toggle"; btn.textContent = "⌄ 펼치기";
+    btn.onclick = () => {
+      const open = el.classList.toggle("open");
+      btn.textContent = open ? "⌃ 접기" : "⌄ 펼치기";
+      if (!open) bubble.scrollIntoView({ block: "nearest" });
+    };
+    bubble.after(btn);
+  });
+}
 
 function applyClamps() {
   view.querySelectorAll(".clamp:not([data-clamp])").forEach((el) => {
@@ -347,8 +407,71 @@ function applyClamps() {
 // ── 탭1: Raw 대화 ────────────────────────────────────────
 function renderRaw() {
   const frag = document.createDocumentFragment();
-  for (const e of EVENTS) frag.appendChild(renderEvent(e));
+  let i = 0;
+  while (i < EVENTS.length) {
+    const e = EVENTS[i];
+    // 연속된 도구 호출(AskUserQuestion 제외)을 하나의 그룹으로 묶음
+    if (e.kind === "tool_use" && e.name !== "AskUserQuestion") {
+      const group = [];
+      while (i < EVENTS.length && EVENTS[i].kind === "tool_use" && EVENTS[i].name !== "AskUserQuestion") {
+        group.push(EVENTS[i]); i++;
+      }
+      frag.appendChild(renderToolGroup(group));
+    } else {
+      frag.appendChild(renderEvent(e));
+      i++;
+    }
+  }
   view.replaceChildren(frag);
+}
+// 도구별 한 줄 요약 정보(아이콘·이름·미리보기)
+function toolInfo(e) {
+  const i = e.input || {};
+  switch (e.name) {
+    case "Bash":  return { icon: "⚡", name: "Bash",  pv: oneLine("$ " + (i.command || "")) };
+    case "Edit":  return { icon: "📝", name: "Edit",  pv: fileName(i.file_path) };
+    case "Write": return { icon: "📄", name: "Write", pv: fileName(i.file_path) };
+    case "Read":  return { icon: "📖", name: "Read",  pv: fileName(i.file_path) };
+    default:      return { icon: "🔧", name: e.name,  pv: oneLine(JSON.stringify(i)) };
+  }
+}
+// 결과를 토글 없이 바로 표시(전체 펼침). 길면 CSS로 클립(overflow:hidden).
+function resultInline(e) {
+  if (e.result == null || e.result === "") return "";
+  return `<pre class="ac-result${e.isError ? " err" : ""}">${esc(e.result)}</pre>`;
+}
+// 도구별 펼침 상세(명령·diff·내용·JSON + 결과). 없으면 "" → 비확장 행
+function toolDetail(e) {
+  const i = e.input || {};
+  switch (e.name) {
+    case "Bash":  return codeBlock("$ " + (i.command || ""), "bash") +
+      (i.description ? `<div class="desc">${esc(i.description)}</div>` : "") + resultInline(e);
+    case "Edit":  return editDiff(i) + resultInline(e);
+    case "Write": return codeBlock(String(i.content || "").slice(0, 4000), langFromPath(i.file_path)) + resultInline(e);
+    case "Read":  return resultInline(e); // 보통 결과 없음 → 빈 문자열
+    default:      return codeBlock(JSON.stringify(i, null, 2).slice(0, 1500), "json") + resultInline(e);
+  }
+}
+// 연속 도구 호출 → 그룹 컨테이너(기본 접힘) + 레일 타임라인
+function renderToolGroup(group) {
+  const nErr = group.filter((e) => e.isError).length;
+  const status = nErr ? `<span class="tg-err">${nErr} 실패</span>` : `<span class="tg-ok">모두 완료</span>`;
+  const rows = group.map((e) => {
+    const { icon, name, pv } = toolInfo(e);
+    const stat = e.isError ? `<span class="ac-x">✗</span>` : `<span class="ac-chk">✓</span>`;
+    const inner = `<span class="ac-ic">${icon}</span><span class="ac-nm">${esc(name)}</span>`+
+      `<span class="ac-pv">${esc(pv)}</span>${tsSpan(e)}${stat}`;
+    const detail = toolDetail(e);
+    return detail
+      ? `<details class="ac-item${e.isError ? " err" : ""}"><summary class="ac-row">${inner}</summary><div class="ac-detail">${detail}</div></details>`
+      : `<div class="ac-item${e.isError ? " err" : ""}"><div class="ac-row norow">${inner}</div></div>`;
+  }).join("");
+  const d = document.createElement("details"); // open 없음 = 기본 접힘
+  d.className = "toolgroup";
+  d.innerHTML = `<summary class="tg-head"><span>🛠</span><span class="tg-cnt">도구 ${group.length}</span>`+
+    `<span>·</span>${status}<span class="tg-caret">▸</span></summary>`+
+    `<div class="ac-rail">${rows}</div>`;
+  return d;
 }
 // Claude Code 공식 로고(오렌지 [*] 마크) — 🤖 대체
 const CLAUDE_ICON = `<svg class="cicon" viewBox="0 0 24 24" aria-hidden="true"><path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"></path></svg>`;
@@ -362,12 +485,9 @@ function renderEvent(e) {
     const names = e.imageNames || [];
     const nImg = names.length || e.images || 0;
     const attach = nImg ? `<div class="attach">🖼️ ${names.length ? names.map(esc).join(" · ") : "첨부 이미지 " + nImg + "개"}</div>` : "";
-    const long = (e.text || "").length > 1200;
-    const body = e.text
-      ? (long
-        ? `<details><summary class="role" style="cursor:pointer">긴 입력 펼치기</summary><div class="bubble">${esc(e.text)}</div></details>`
-        : `<div class="bubble">${esc(e.text)}</div>`)
-      : "";
+    // 기본 10줄까지 표시, 넘으면 10줄 + '펼치기'(applyUserClamps에서 버튼 부착)
+    // 클램프는 안쪽 래퍼(.uctext)에만 → 말풍선 꼬리(::before/::after)가 안 잘림
+    const body = e.text ? `<div class="bubble"><div class="uctext uclamp">${esc(e.text)}</div></div>` : "";
     wrap.innerHTML = head("나", "", e.ts) + body + attach;
   } else if (e.kind === "assistant_text") {
     wrap.innerHTML = head(CLAUDE_ICON + "Claude", "", e.ts) + `<div class="bubble md">${clampWrap(md(e.text))}</div>`;
