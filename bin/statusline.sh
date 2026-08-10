@@ -5,7 +5,9 @@
 # 주의: statusLine은 매우 자주(수백 ms) 호출되므로 가볍고 빠르게 유지한다. set -e 미사용(중간 실패로 줄이 비지 않도록).
 
 PORT="${CW_PORT:-4317}"
-SERVER="${CW_SERVER:-$HOME/Desktop/glen_projects/claude-watch/server.mjs}"
+# 이 스크립트 위치(bin/)를 기준으로 server.mjs 를 찾는다 — 어디에 클론하든 동작한다.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SERVER="${CW_SERVER:-$SELF_DIR/../server.mjs}"
 BOOT_LOCK="/tmp/claude-watch-boot.lock"
 
 # stdin(JSON)은 한 번만 읽어 변수에 보관 (hud에 재공급해야 하므로)

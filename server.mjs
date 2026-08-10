@@ -24,6 +24,10 @@ import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
+// 이 서버는 세션 전문(코드·파일 내용·명령 출력·자격증명)을 그대로 내보낸다.
+// 인증이 없으므로 기본은 루프백 전용. 같은 와이파이의 다른 기기에서 접근하지 못한다.
+// 굳이 열어야 하면 CW_HOST=0.0.0.0 으로 명시해야 한다(권장하지 않음).
+const HOST = process.env.CW_HOST || "127.0.0.1";
 const PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
 // ── 세션 인덱스: <세션id> → 파일 경로 ────────────────────────────────
@@ -266,9 +270,30 @@ let LIST = await readFile(LIST_PATH, "utf8");
 // 개발 모드: 매 요청마다 HTML을 다시 읽어 새로고침만으로 반영(핫리로드). 배포 땐 끄고 메모리 캐시 사용.
 const DEV = process.env.CW_DEV === "1";
 
+// 브라우저는 요청 출처를 Sec-Fetch-Site 로 알려준다.
+//   same-origin = 우리 뷰어 페이지, none = 주소창 직접 입력, cross-site = 다른 사이트가 부름
+// 루프백에만 열어놔도 사용자가 방문한 아무 웹페이지가 <img src="http://localhost:4317/export?...">
+// 같은 식으로 부를 수 있으므로, 부수효과가 있는 경로는 교차 출처를 거부한다.
+function sameOriginOnly(req) {
+  const site = req.headers["sec-fetch-site"];
+  if (site && site !== "same-origin" && site !== "none") return false;
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const h = new URL(origin).hostname;
+      if (h !== "127.0.0.1" && h !== "localhost" && h !== "::1") return false;
+    } catch { return false; }
+  }
+  return true;
+}
+const MUTATING = /^\/(export|api\/(rename|setproject|ai|pick-folder))\//;
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
+
+  if ((MUTATING.test(path) || path === "/api/pick-folder") && !sameOriginOnly(req))
+    return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // 개발 모드면 매 요청마다 뷰어/리스트 HTML을 다시 읽어 즉시 반영(서버 재시작 불필요)
   if (DEV) { VIEWER = await readFile(VIEWER_PATH, "utf8"); LIST = await readFile(LIST_PATH, "utf8"); }
@@ -660,6 +685,8 @@ function runClaude(kind, digest) {
   });
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`claude-watch listening on http://localhost:${PORT}`);
+  if (HOST !== "127.0.0.1" && HOST !== "localhost")
+    console.log(`⚠️  CW_HOST=${HOST} — 세션 전문이 네트워크에 공개됩니다. 인증이 없으니 신뢰하는 망에서만 쓰세요.`);
 });
