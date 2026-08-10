@@ -6,285 +6,565 @@
 <title>claude-watch · 세션</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
-  /* ── 다크 테마 ── */
-  :root { --bg:#15151a; --card:#1e1e24; --line:#2c2c35; --muted:#8b8b96; --ink:#e7e7ec; --accent:#ff5fa8;
-    --code-bg:#16161b; --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
-    /* 대화 폰트: 라틴=JetBrains Mono, 한글=Pretendard 폴백 */
-    --chat:'JetBrains Mono', 'Pretendard', -apple-system, 'Apple SD Gothic Neo', sans-serif; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink);
-    font:15px/1.7 -apple-system,system-ui,"Apple SD Gothic Neo",sans-serif; }
-  header { position:sticky; top:0; z-index:5; background:rgba(21,21,26,.92);
-    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:10px 20px; }
-  .topline { display:flex; gap:10px; align-items:center; }
-  header h1 { font-size:15px; margin:0; font-weight:600; font-family:var(--mono); } /* 로고: JetBrains Mono 토큰 */
-  .usagebar { margin-left:auto; font-size:12px; color:var(--muted); font-family:var(--mono); white-space:nowrap; }
-  .usagebar b { color:var(--ink); font-weight:700; }
-  .usagebar .cost { color:#ffb454; font-weight:700; }
-  .usagebar .acct { color:#71717c; } .usagebar .acct b { color:#a9a9b4; }
-  .hbtn { margin-left:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:12px; font-family:var(--mono); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
-  .hbtn svg { width:14px; height:14px; display:block; flex:none; } /* Figma listIcon/exportIcon */
-  .hbtn:hover { border-color:var(--accent); color:var(--accent); }
-  .hbtn:disabled { opacity:.5; cursor:wait; }
-  .topline > .hbtn:first-child { margin-left:0; } /* 맨 왼쪽 List 버튼은 여백 제거 */
-  /* 버전 라벨 (Figma 디자인 반영): latest일 때만 "/latest"를 네온그린으로 */
-  .ver { font-size:11px; color:var(--muted); font-family:var(--mono); }
-  .ver .latest { color:#5af78e; } /* neon/green */
-  .topdiv { color:var(--muted); font-family:var(--mono); }
-  .sessname { font-size:12px; color:#f4f89d; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; min-width:0; max-width:520px; } /* neon/yellow */
-  .status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:14px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:#555; }
-  .dot.live { background:#2bbf6a; box-shadow:0 0 0 3px rgba(43,191,106,.18); }
-  .tabs { display:flex; gap:4px; margin-top:10px; }
-  .tabs button { border:none; background:transparent; padding:8px 14px; font-size:13.5px; cursor:pointer;
-    color:var(--muted); border-radius:8px 8px 0 0; font-weight:600; }
-  .tabs button.on { color:var(--accent); background:var(--card); border:1px solid var(--line); border-bottom:1px solid var(--card); margin-bottom:-1px; }
-  main { max-width:880px; margin:0 auto; padding:24px 20px 120px; }
-  .ev { margin:16px 0; font-family:var(--chat); }
+/* ══ 디자인 토큰 (핸드오프 Design Tokens) ══ */
+:root{
+  --bg:#15151a; --card:#1e1e24; --line:#2c2c35; --line-soft:#21212a;
+  --ink:#e7e7ec; --ink-2:#c3c3cc; --ink-3:#d4d4dc; --muted:#8b8b96; --muted-2:#5c5c66;
+  --accent:#ff5fa8; --accent-bg:#2c1a26; --accent-ink:#ffa8cf;
+  --sess:#f4f89d; --live:#2bbf6a; --code-bg:#16161b;
+  --panel:#131318; --panel-2:#0f0f13; --row-sel:#1c1c22; --block:#191920;
+  --add:#8fe0ab; --del:#ef7d7d; --mod:#9cc0ef; --sys:#ef5350;
+  --agent:#c9a6ff; --agent-bg:#191325; --agent-line:#34294a; --agent-muted:#8b7bb0;
+  --opus:#e0a458; --sonnet:#9cc0ef; --haiku:#8fe0ab; --fable:#c9a6ff; --other:#8b8b96;
+  --done:#5fcf86;
+  /* 본문 최대 폭 — 이 값만 바꾸면 4개 탭 전부 반영된다. 좁히면 가운데로 모인다. */
+  --content-max:1280px;
+  --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --sans:Pretendard, -apple-system, system-ui, 'Apple SD Gothic Neo', sans-serif;
+  --ease:cubic-bezier(0.23, 1, 0.32, 1);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 var(--sans);
+  display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.mono{font-family:var(--mono)}
 
-  /* 역할 헤더 (F) */
-  .msghead { display:flex; align-items:center; gap:8px; margin:0 2px 5px; font-size:12px; }
-  .msghead .who { font-weight:800; font-size:16px; display:inline-flex; align-items:center; gap:6px; }
-  .cicon { width:1.35em; height:1.35em; flex:none; }
-  .msghead .ts { color:var(--muted); font-family:var(--mono); font-size:11px; }
-  .user_text .who { color:#6fa8ff; }
-  .assistant_text .who { color:var(--accent); }
+@keyframes cwpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.82)}}
+.pulse{animation:cwpulse 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){ .pulse{animation:none} *{transition-duration:1ms !important} }
 
-  .bubble { position:relative; padding:12px 16px; border-radius:14px; word-break:break-word; max-width:80%; }
-  /* 사람=우측 정렬 · Claude=좌측(기본), 두 버블 모두 카드형으로 통일 */
-  .ev.user_text { display:flex; flex-direction:column; align-items:flex-end; }
-  .ev.user_text .bubble, .ev.user_text > details { max-width:80%; }
-  /* Claude도 flex → 내용 길이에 맞춰 가로폭 조절(항상 넓게 퍼지지 않도록) */
-  .ev.assistant_text { display:flex; flex-direction:column; align-items:flex-start; }
-  .user_text .bubble { background:#1d2740; border:1px solid #2c3a5c; white-space:pre-wrap; text-align:left; border-top-right-radius:0; }
-  .user_text .attach { font-size:12px; color:var(--muted); margin-top:5px; font-family:var(--mono); }
-  /* 사용자 입력: 기본 10줄까지 표시, 넘으면 '펼치기' */
-  .uctext.uclamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:10; overflow:hidden; }
-  .uctext.uclamp.open { display:block; -webkit-line-clamp:unset; overflow:visible; }
-  .uc-toggle { align-self:flex-end; margin-top:4px; background:none; border:none; color:var(--accent);
-    font:12px var(--mono); cursor:pointer; padding:2px 4px; }
-  .uc-toggle:hover { text-decoration:underline; }
-  .assistant_text .bubble { background:var(--card); border:1px solid var(--line); border-top-left-radius:0; }
-  /* 말풍선 꼬리: 2겹 border-삼각형(뒤=테두리색, 앞=채움색) → 버블 border와 자연 연결 */
-  /* Claude(좌상단): ::before=테두리, ::after=채움 */
-  .assistant_text .bubble::before {
-    content:""; position:absolute; left:-11px; top:-1px; width:0; height:0;
-    border:12px solid transparent; border-right-color:var(--line); border-top:0; border-left:0; }
-  .assistant_text .bubble::after {
-    content:""; position:absolute; left:-9px; top:0; width:0; height:0;
-    border:11px solid transparent; border-right-color:var(--card); border-top:0; border-left:0; }
-  /* 사용자(우상단) */
-  .user_text .bubble::before {
-    content:""; position:absolute; right:-11px; top:-1px; width:0; height:0;
-    border:12px solid transparent; border-left-color:#2c3a5c; border-top:0; border-right:0; }
-  .user_text .bubble::after {
-    content:""; position:absolute; right:-9px; top:0; width:0; height:0;
-    border:11px solid transparent; border-left-color:#1d2740; border-top:0; border-right:0; }
-  .role { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; }
-  details.think summary { cursor:pointer; color:var(--muted); font-size:13px; list-style:none; }
-  details.think .body { white-space:pre-wrap; color:#9a9aa4; font-size:13px; background:#22222a;
-    border-left:3px solid #3a3a44; padding:10px 12px; border-radius:6px; margin-top:6px; font-family:var(--mono); }
+/* ══ 1. 라이브 히어로 ══ */
+.hero{flex-shrink:0;padding:18px 24px 16px;background:linear-gradient(180deg,#1e1e24 0%,#15151a 100%);
+  border-bottom:1px solid var(--line);display:flex;align-items:center;gap:24px}
+.hero-l{display:flex;flex-direction:column;gap:7px;flex:1;min-width:0}
+.hero-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.livedot{width:7px;height:7px;border-radius:50%;background:var(--live);box-shadow:0 0 0 3px rgba(43,191,106,.18);flex-shrink:0}
+.livedot.off{background:#555;box-shadow:none;animation:none}
+.statustext{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--live);letter-spacing:.1em}
+.statustext.off{color:var(--muted)}
+.hero-title{font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-path{font-family:var(--mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-path .sname{color:var(--sess)}
+.hero-r{display:flex;align-items:center;gap:20px;flex-shrink:0}
+.metric{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.metric .lab{font-size:11px;color:var(--muted);white-space:nowrap}
+.metric .val{display:flex;align-items:baseline;gap:3px}
+.metric .num{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1;color:var(--ink)}
+.metric .unit{font-size:12px;color:var(--muted)}
+.metric .sub{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.vr{width:1px;height:32px;background:var(--line);flex-shrink:0}
+.btn-export{font-family:var(--mono);padding:8px 14px;border-radius:8px;background:var(--accent);
+  color:#2c1a26;font-size:12.5px;font-weight:700;transition:transform 160ms var(--ease)}
+.btn-export:active{transform:scale(0.97)}
+.btn-export[disabled]{background:var(--card);border:1px solid var(--line);color:var(--muted-2);cursor:default}
 
-  /* 마크다운 (H) */
-  .md :first-child { margin-top:0; } .md :last-child { margin-bottom:0; }
-  .md p { margin:.5em 0; } .md ul, .md ol { margin:.5em 0; padding-left:1.4em; }
-  .md li { margin:2px 0; }
-  .md h1,.md h2,.md h3,.md h4 { font-size:1.05em; margin:.8em 0 .3em; font-weight:700; }
-  .md a { color:var(--accent); }
-  .md blockquote { margin:.5em 0; padding-left:10px; border-left:3px solid var(--line); color:var(--muted); }
-  .md table { border-collapse:collapse; margin:.5em 0; font-size:.95em; }
-  .md th, .md td { border:1px solid var(--line); padding:4px 8px; }
-  .md code { font-family:var(--mono); font-size:.92em; background:#2a2733; padding:1px 5px; border-radius:4px; color:#CE9178; }
-  .md pre { background:var(--code-bg); padding:12px 14px; border-radius:8px; overflow:auto; margin:.6em 0; }
-  .md pre code { background:transparent; padding:0; font-size:12.5px; }
-  /* 마크다운 펜스 코드블록: 네온 시안으로 균일 처리(토큰 색 덮어쓰기 방지) */
-  .md pre code, .md pre code.hljs, .md pre code * { color:#9AEDFE; }
+/* 모델 칩 */
+.mchip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:5px;white-space:nowrap}
+.mchip i{width:4px;height:4px;border-radius:50%;display:block}
+.mchip span{font-family:var(--mono);font-size:10.5px}
+.m-opus{background:rgba(224,164,88,.12);border:1px solid rgba(224,164,88,.3)}
+.m-opus i,.m-opus span{background-color:var(--opus);color:var(--opus)}
+.m-sonnet{background:rgba(156,192,239,.11);border:1px solid rgba(156,192,239,.28)}
+.m-sonnet i,.m-sonnet span{background-color:var(--sonnet);color:var(--sonnet)}
+.m-haiku{background:rgba(143,224,171,.11);border:1px solid rgba(143,224,171,.28)}
+.m-haiku i,.m-haiku span{background-color:var(--haiku);color:var(--haiku)}
+.m-fable{background:rgba(201,166,255,.11);border:1px solid rgba(201,166,255,.28)}
+.m-fable i,.m-fable span{background-color:var(--fable);color:var(--fable)}
+.m-other{background:rgba(139,139,150,.11);border:1px solid rgba(139,139,150,.28)}
+.m-other i,.m-other span{background-color:var(--other);color:var(--other)}
+.mchip i{background-image:none}
+.mchip span{background:none}
+.plusmodels{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
 
-  .tool { background:#191920; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:10px 0; } /* 말풍선(--card)보다 살짝 어둡게 */
-  .tool .head { display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:13px; }
-  .tool .head .name { font-weight:600; }
-  .tool .head .path { color:var(--muted); font-family:var(--mono); font-size:12px;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tool .head .ts { color:var(--muted); font-family:var(--mono); font-size:11px; margin-left:auto; }
-  .tool .head .badge { margin-left:8px; }
-  .tool.err { border-color:#5c2e2e; }
-  .badge { font-size:11px; padding:2px 8px; border-radius:20px; background:#18331f; color:#5fcf86; }
-  .badge.err { background:#3a1e1e; color:#ef7d7d; }
-  pre.code { margin:0; padding:12px 14px; background:var(--code-bg); color:#e6e6e6; overflow:auto;
-    font:12.5px/1.55 var(--mono); }
-  pre.code code, pre.code code.hljs { background:transparent; padding:0; }
-  .desc { padding:6px 14px 10px; color:var(--muted); font-size:12.5px; }
-  .diff { font:12.5px/1.55 var(--mono); }
-  .diff .l { padding:1px 14px; white-space:pre-wrap; word-break:break-word; }
-  .diff .del { background:rgba(229,83,75,.14); color:#f0a39a; }
-  .diff .add { background:rgba(63,185,108,.14); color:#8fe0ab; }
-  details.result { border-top:1px dashed var(--line); }
-  details.result summary { cursor:pointer; padding:8px 14px; font-size:12px; color:var(--muted); list-style:none; }
-  details.result pre { margin:0; padding:0 14px 12px; max-height:320px; overflow:auto;
-    white-space:pre-wrap; font:12px/1.5 var(--mono); color:#9a9aa4; }
-  summary::-webkit-details-marker { display:none; }
+/* ══ 2. 탭 바 ══ */
+.tabbar{flex-shrink:0;height:46px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--line)}
+.tabgroup{display:flex;gap:3px;padding:3px;border-radius:9px;background:#1a1a20;border:1px solid var(--line)}
+.tabgroup button{padding:6px 15px;border-radius:6px;font-size:13px;font-weight:600;color:var(--muted);
+  transition:background 160ms ease,color 160ms ease}
+.tabgroup button.on{background:var(--line);color:var(--ink)}
+.searchbox{flex:1;min-width:0;max-width:300px;display:flex;align-items:center;gap:8px;height:30px;
+  padding:0 11px;border-radius:8px;background:var(--card);border:1px solid var(--line)}
+.searchbox .ico{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.searchbox input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--ink);font:12.5px var(--sans)}
+.searchbox input::placeholder{color:var(--muted-2)}
+.hits{font-family:var(--mono);font-size:11px;color:var(--accent);white-space:nowrap}
+.navhit{font-family:var(--mono);font-size:12px;color:var(--muted);padding:0 2px;transition:color 160ms ease}
+.spacer{flex:1}
+.keep{display:flex;align-items:center;gap:9px;flex-shrink:0}
+.keep .lab{font-size:12.5px;color:var(--muted)}
+.switch{width:34px;height:19px;border-radius:12px;background:var(--line);position:relative;flex-shrink:0;
+  transition:background 160ms ease}
+.switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--muted);
+  transition:left 160ms var(--ease),background 160ms ease;display:block}
+.switch.on{background:var(--live)}
+.switch.on i{left:17px;background:var(--bg)}
 
-  /* 접기형 도구 카드: 한 줄 미리보기 + 클릭 펼침 */
-  details.tool > summary.head { cursor:pointer; list-style:none; }
-  .tool .head .pv { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    color:var(--muted); font-family:var(--mono); font-size:12px; }
-  .tool .head .caret { color:var(--ink); opacity:.75; font-size:15px; line-height:1; transition:transform .15s; margin-left:8px; }
-  details.tool[open] > summary.head .caret { transform:rotate(90deg); }
-  /* result·대안 요약에도 회전 caret 프리픽스(일관성·가독성) */
-  details.result > summary::before,
-  details.dalts > summary::before {
-    content:"▸"; display:inline-block; font-size:15px; line-height:1; margin-right:7px;
-    opacity:.7; transition:transform .15s; }
-  details.result[open] > summary::before,
-  details.dalts[open] > summary::before { transform:rotate(90deg); }
-  .tool .tbody { border-top:1px solid var(--line); }
-  /* AskUserQuestion 가독형 (도구 그룹과 동일한 어두운 톤) */
-  .tool.ask { background:#131317; border-color:rgba(255,255,255,.05); }
-  .tool.ask .aq { padding:10px 14px; border-top:1px dashed var(--line); }
-  .tool.ask .aq:first-child { border-top:none; }
-  .tool.ask .aqt { font-weight:600; font-size:13px; margin-bottom:7px; }
-  .tool.ask .aqt .dtag { display:inline-block; font-size:10px; font-weight:700; color:var(--accent);
-    background:#2c1a26; padding:1px 7px; border-radius:10px; margin-right:7px; vertical-align:middle; }
-  .tool.ask .aopt { padding:6px 10px; margin:4px 0; border-radius:8px; border:1px solid var(--line); font-size:12.5px; }
-  .tool.ask .aopt.picked { border-color:#5fcf86; background:rgba(95,207,134,.10); }
-  .tool.ask .aopt.picked b { color:#8fe0ab; }
-  .tool.ask .aans { margin:7px 0 2px; padding:7px 10px; border-radius:8px; font-size:12.5px;
-    background:rgba(95,207,134,.10); border:1px solid #5fcf86; }
-  .tool.ask .aans .k { font-weight:700; color:#8fe0ab; margin-right:6px; }
-  .tool.ask .aans.muted { background:transparent; border:1px dashed var(--line); color:var(--muted); }
-  .tool.ask .aans.muted .k { color:var(--muted); }
-  /* 시스템/하네스 주입 메시지: 토글 없이 한 줄 회색 노트 */
-  .ev.system_note { margin:3px 0; }
-  .sysnote { display:flex; align-items:center; gap:8px; padding:3px 4px; }
-  .sysnote .sys-label { flex:none; color:#ef5350; font-weight:800; font-family:var(--mono);
-    letter-spacing:.5px; font-size:11px; }
-  .sysnote .systext { min-width:0; color:var(--muted); font-family:var(--mono); font-size:11px;
-    opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tool.ask .adesc { color:var(--muted); font-size:12px; margin-top:3px; font-weight:400; }
+/* ══ 본문 셸 ══ */
+.shell{flex:1;display:flex;min-height:0}
+.mainwrap{flex:1;min-width:0;position:relative;display:flex;flex-direction:column}
+.scroller{flex:1;overflow-y:auto;padding:22px 26px 64px;display:flex;flex-direction:column;align-items:center}
+#view{width:100%;display:flex;flex-direction:column;align-items:center}
 
-  /* 도구 그룹(A+C): 연속 도구 호출을 한 컨테이너로 묶고 레일 타임라인으로 표시 */
-  /* 말풍선(--card)보다 어둡고 낮은 채도 → 대화보다 한 단계 아래로 */
-  details.toolgroup { background:#131317; border:1px solid rgba(255,255,255,.05); border-radius:12px; margin:10px 0; overflow:hidden; }
-  details.toolgroup > summary.tg-head { display:flex; align-items:center; gap:8px; padding:9px 14px;
-    font:12px var(--mono); color:var(--muted); cursor:pointer; list-style:none; background:rgba(0,0,0,.18); }
-  .tg-head .tg-cnt { color:var(--ink); font-weight:700; }
-  .tg-head .tg-ok { color:#5fcf86; } .tg-head .tg-err { color:#ef7d7d; }
-  .tg-head .tg-icons { margin-left:6px; opacity:.7; font-size:11px; letter-spacing:1px; }
-  .tg-head .tg-caret { margin-left:auto; color:var(--ink); opacity:.6; font-size:14px; transition:transform .15s; }
-  details.toolgroup[open] > summary.tg-head .tg-caret { transform:rotate(90deg); }
-  details.toolgroup[open] > summary.tg-head { border-bottom:1px solid rgba(255,255,255,.05); }
-  /* 레일: 세로선이 노드 중심(x=18)을 관통 */
-  .ac-rail { position:relative; padding:6px 12px 8px 30px; }
-  .ac-rail::before { content:""; position:absolute; left:17px; top:12px; bottom:12px; width:2px; background:var(--line); }
-  .ac-row { position:relative; display:flex; align-items:center; gap:10px; padding:6px 8px;
-    border-radius:8px; cursor:pointer; list-style:none; }
-  .ac-row.norow { cursor:default; }
-  .ac-row:hover { background:rgba(255,255,255,.04); }
-  .ac-row::before { content:""; position:absolute; left:-17px; top:50%; transform:translateY(-50%);
-    width:6px; height:6px; border-radius:50%; background:var(--bg); border:2px solid #5fcf86; }
-  .ac-item.err > .ac-row::before { border-color:#ef7d7d; }
-  .ac-ic { font-size:13px; width:16px; text-align:center; flex:none; }
-  .ac-nm { font:600 12.5px var(--mono); flex:none; min-width:74px; }
-  .ac-pv { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    color:var(--muted); font:12px var(--mono); }
-  .ac-row .ts { flex:none; font-family:var(--mono); font-size:11px; color:var(--muted); }
-  .ac-chk { color:#5fcf86; font:700 14px/1 var(--mono); flex:none; }
-  .ac-x { color:#ef7d7d; font:700 14px/1 var(--mono); flex:none; }
-  .ac-detail { padding:2px 10px 10px; }
-  /* 상세는 전체 펼침(토글 없음), 길면 스크롤 대신 클립(overflow:hidden) */
-  .ac-detail pre.code, .ac-detail .diff, .ac-result { max-height:300px; overflow:hidden; }
-  .ac-result { margin:6px 0 0; padding:8px 12px; background:var(--code-bg); border:1px solid var(--line);
-    border-radius:8px; font:11.5px/1.5 var(--mono); color:#9a9aa4; white-space:pre-wrap; word-break:break-word; }
-  .ac-result.err { color:#f0a39a; border-color:#5c2e2e; }
+/* ══ 3. 세션 레일 ══ */
+.rail{width:238px;flex-shrink:0;border-right:1px solid var(--line);background:var(--panel);
+  display:flex;flex-direction:column;min-height:0}
+.rail-head{display:flex;flex-direction:column;gap:9px;padding:11px 12px 10px}
+.rail-head .row1{display:flex;align-items:center;gap:8px}
+.rail-lab{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.08em}
+.railbtn{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;
+  background:var(--card);border:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--muted);
+  transition:transform 160ms var(--ease),background 160ms ease,color 160ms ease}
+.railbtn:active{transform:scale(0.94)}
+.projsel{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--card);
+  border:1px solid var(--line);cursor:pointer;transition:background 160ms ease;width:100%;text-align:left}
+.projsel .dot{width:5px;height:5px;border-radius:50%;background:var(--live);flex-shrink:0}
+.projpath{display:flex;align-items:center;gap:0;flex:1;min-width:0}
+.projpath .par{font-family:var(--mono);font-size:12px;color:var(--muted);flex:0 1 auto;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projpath .leaf{font-family:var(--mono);font-size:12px;color:var(--ink);flex:0 0 auto;white-space:nowrap}
+.projsel .cnt{font-family:var(--mono);font-size:10.5px;color:var(--muted);flex-shrink:0}
+.projsel .car{font-family:var(--mono);font-size:10px;color:var(--muted-2);flex-shrink:0}
+.raillist{display:flex;flex-direction:column;overflow-y:auto;border-top:1px solid var(--line-soft);flex:1}
+.dgroup{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:7px;padding:7px 12px;width:100%;
+  background:var(--panel-2);border-bottom:1px solid var(--line-soft);text-align:left;transition:background 160ms ease}
+.dgroup .chev{display:flex;align-items:center;justify-content:center;width:13px;height:13px;flex-shrink:0}
+.dgroup .lab{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--ink-2);letter-spacing:.04em}
+.dgroup .sub{font-family:var(--mono);font-size:10px;color:var(--muted-2)}
+.dgroup .cnt{font-family:var(--mono);font-size:10px;color:var(--muted-2);margin-left:auto}
+.srow{position:relative;padding:9px 12px 10px 17px;border-bottom:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:5px;cursor:pointer;transition:background 160ms ease;width:100%;text-align:left}
+.srow .nm{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .r1{display:flex;align-items:center;gap:7px;min-width:0}
+.srow .ts{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.srow .r3{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.srow.sel{padding-left:14px;background:var(--row-sel)}
+.srow.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.srow.sel .nm{color:var(--sess)}
+.srow.live .ts{color:var(--live)}
+.renamebtn{font-family:var(--mono);font-size:11px;color:var(--muted-2);padding:1px 4px;border-radius:4px;
+  flex-shrink:0;transition:color 160ms ease}
+.renameinput{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;color:var(--sess);background:var(--bg);
+  border:1px solid var(--accent);border-radius:4px;padding:2px 6px;outline:none}
+.railfoot{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line-soft);
+  transition:background 160ms ease;width:100%;text-align:left}
+.railfoot .l{font-family:var(--mono);font-size:11px;color:var(--muted);flex:1}
+.railfoot .r{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.statusline{margin:10px;padding:10px 11px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line);
+  display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.statusline .lab{font-size:10px;font-weight:700;color:var(--muted-2);letter-spacing:.08em}
+.statusline .body{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.statusline .sep{color:#3a3a44}
+/* 내보내기 다이얼로그 */
+.modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.55);padding:24px}
+.modal .sheet{width:100%;max-width:520px;display:flex;flex-direction:column;gap:9px;padding:22px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.modal .sh{font-size:17px;font-weight:700;color:var(--ink)}
+.modal .sd{font-size:12px;color:var(--muted);line-height:1.6}
+.modal .fl{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-top:6px}
+.modal .fi{padding:9px 11px;border-radius:8px;background:var(--bg);border:1px solid var(--line);
+  color:var(--ink);font:13px var(--sans);outline:none;transition:border-color 160ms ease}
+.modal .fi.mono{font-family:var(--mono);font-size:12px}
+.modal .frow{display:flex;gap:7px;align-items:stretch}
+.modal .frow .fi{flex:1;min-width:0}
+.modal .iconbtn{display:flex;align-items:center;justify-content:center;width:38px;flex-shrink:0;
+  border-radius:8px;background:var(--bg);border:1px solid var(--line);color:var(--muted);
+  transition:transform 160ms var(--ease),background 160ms ease,color 160ms ease}
+.modal .iconbtn:active{transform:scale(0.94)}
+.modal .iconbtn[disabled]{opacity:.5}
+.modal .fi:focus{border-color:var(--accent)}
+.modal .ck{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:11px 12px;border-radius:9px;
+  background:var(--bg);border:1px solid var(--line);cursor:pointer}
+.modal .ck input{margin-top:2px;accent-color:var(--accent);width:15px;height:15px;flex-shrink:0}
+.modal .ck b{font-size:13px;color:var(--ink);font-weight:600;display:block;margin-bottom:3px}
+.modal .ck .sd{display:block}
+.modal .acts{display:flex;justify-content:flex-end;gap:9px;margin-top:10px}
+.projmenu{position:fixed;z-index:50;min-width:280px;max-height:60vh;overflow-y:auto;padding:5px;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.pmrow{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:7px;text-align:left;
+  transition:background 160ms ease}
+.pmrow.on{background:var(--row-sel)}
+.pmrow .dot{width:5px;height:5px;border-radius:50%;background:var(--live);flex-shrink:0}
+.pmrow .p{display:flex;align-items:center;gap:0;flex:1;min-width:0}
+.pmrow .par{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmrow .leaf{font-family:var(--mono);font-size:11.5px;color:var(--ink);white-space:nowrap;flex-shrink:0}
+.pmrow .c{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);flex-shrink:0}
+.pmfoot{margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
+.pmfoot .leaf{color:var(--muted)}
+.rail.closed{width:48px;align-items:center;padding:13px 0;gap:8px}
+.rail.closed .rail-head,.rail.closed .raillist,.rail.closed .railfoot,.rail.closed .statusline{display:none}
+.railmini{display:none}
+.rail.closed .railmini{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;width:100%}
+.minibtn{width:28px;height:28px;border-radius:7px;background:var(--card);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink)}
+.minisep{width:24px;height:1px;background:var(--line);margin:4px 0}
+.minichip{width:28px;height:28px;border-radius:7px;background:#1a1a20;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.minichip.on{background:rgba(255,95,168,.12);border-color:rgba(255,95,168,.3)}
+.minichip .p{width:6px;height:6px;border-radius:50%;background:var(--live)}
 
-  /* 요약 탭 */
-  .stats { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 18px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px; text-align:center; }
-  .stat .n { font-size:22px; font-weight:700; }
-  .stat .k { font-size:12px; color:var(--muted); }
-  h3.sec { font-size:14px; margin:22px 0 8px; }
-  ol.prompts { padding-left:20px; } ol.prompts li { margin:4px 0; }
-  ul.files { list-style:none; padding:0; font-family:var(--mono); font-size:12.5px; }
-  ul.files li { padding:3px 0; } ul.files .tag { font-size:10px; padding:1px 6px; border-radius:8px; margin-right:6px; }
-  .tag.new { background:#1f3a2a; color:#8fe0ab; } .tag.mod { background:#1f2f4a; color:#9cc0ef; }
+/* ══ 공통 섹션 ══ */
+.seclab{font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.08em}
+.secmeta{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.sechead{display:flex;align-items:baseline;gap:9px}
+.sechead .spacer{flex:1}
+.divider{height:1px;background:var(--line)}
+.pane{display:flex;flex-direction:column}
+.listbox{border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:hidden}
+.listbox .r{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line)}
+.listbox .r:last-child{border-bottom:0}
 
-  /* 세션 요약 v1: 의사결정·산출물·핫스팟 */
-  .cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media (max-width:640px){ .cols { grid-template-columns:1fr; } }
-  .decision { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent);
-    border-radius:10px; padding:10px 14px; margin:8px 0; }
-  .decision .dq { font-weight:600; font-size:13.5px; margin-bottom:5px; }
-  .decision .dtag { font-size:10px; font-weight:700; color:var(--accent); background:#2c1a26;
-    padding:1px 7px; border-radius:10px; margin-right:6px; vertical-align:middle; }
-  .decision .dchosen { color:#8fe0ab; font-size:13px; }
-  .decision details.dalts { margin-top:7px; }
-  .decision details.dalts summary { cursor:pointer; color:var(--muted); font-size:12px; list-style:none; }
-  .decision .dalt { font-size:12px; color:var(--muted); padding:3px 0 3px 12px; border-left:2px solid var(--line); margin-top:5px; }
-  .decision .dalt b { color:var(--ink); }
-  /* 섹션 접기/펼치기 래퍼 */
-  details.fold { margin:22px 0 0; }
-  details.fold > summary { cursor:pointer; list-style:none; font-size:14px; font-weight:700; margin:0; display:flex; align-items:center; gap:7px; padding:4px 0; }
-  details.fold > summary::-webkit-details-marker { display:none; }
-  details.fold > summary::before { content:"▸"; color:var(--muted); font-size:12px; transition:transform .15s; }
-  details.fold[open] > summary::before { transform:rotate(90deg); }
-  details.fold > summary:hover { color:var(--accent); }
-  .foldbody { margin-top:10px; }
+/* ══ 4. 요약 탭 ══ */
+/* 폭은 유동. 프로토타입 프레임(1180px) 기준 고정값을 쓰면 와이드 모니터에서 오른쪽이 빈다. */
+.sum{display:flex;flex-direction:column;gap:22px;width:100%;max-width:var(--content-max)}
+.headline{font-size:21px;font-weight:800;color:var(--ink);letter-spacing:-.02em;line-height:1.45;text-wrap:pretty;max-width:42em}
+.bullets{display:flex;flex-direction:column;gap:10px}
+.bullet{display:flex;gap:11px}
+.bullet i{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:9px;flex-shrink:0;display:block}
+.bullet span{font-size:14.5px;color:var(--ink-2);line-height:1.7;text-wrap:pretty;max-width:64em}
+code,.icode{font-family:var(--mono);font-size:13px;background:#2a2733;color:#CE9178;padding:1px 5px;border-radius:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.skl{font-family:var(--mono);font-size:9.5px;font-weight:800;color:var(--sys);flex-shrink:0}
+.skname{font-family:var(--mono);font-size:12px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sktok{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.toolbox{border:1px solid var(--line);border-radius:11px;background:var(--card);padding:11px 13px;
+  display:flex;flex-direction:column;gap:9px}
+.toolrow{display:flex;align-items:center;gap:9px}
+.toolrow .n{font-family:var(--mono);font-size:11.5px;width:52px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolrow .track{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.toolrow .fill{height:100%;display:block}
+.toolrow .c{font-family:var(--mono);font-size:11px;color:var(--muted);width:22px;text-align:right}
+.agentbox{border:1px solid var(--agent-line);border-radius:11px;background:var(--agent-bg);overflow:hidden}
+.agentbox .r{display:flex;align-items:center;gap:11px;padding:9px 13px;border-bottom:1px solid #241c34}
+.agentbox .r:last-child{border-bottom:0}
+.abadge{width:17px;height:17px;border-radius:5px;background:rgba(201,166,255,.14);border:1px solid rgba(201,166,255,.32);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9.5px;color:var(--agent);
+  font-weight:700;flex-shrink:0}
+.adesc{font-size:12.5px;color:var(--ink-3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amodel,.atools,.astat,.atok{font-family:var(--mono);font-size:10.5px;flex-shrink:0}
+.atools{color:var(--agent-muted)}
+.astat.done{color:var(--done)}
+.astat.run{display:flex;align-items:center;gap:5px;color:var(--sess)}
+.astat.run i{width:5px;height:5px;border-radius:50%;background:var(--sess);display:block}
+.atok{color:var(--muted);width:38px;text-align:right}
+.ratio{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px}
+.ratio div:first-child{border-radius:4px 0 0 4px}
+.ratio div:last-child{border-radius:0 4px 4px 0}
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.legend .l{display:flex;align-items:center;gap:8px}
+.legend .sw{width:8px;height:8px;border-radius:2px;flex-shrink:0;display:block}
+.legend .nm{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);flex:1}
+.legend .v{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.aibtn{align-self:flex-start;font-size:12.5px;padding:7px 13px;border-radius:8px;background:var(--card);
+  border:1px solid var(--line);color:var(--ink-2);transition:transform 160ms var(--ease),color 160ms ease}
+.aibtn:active{transform:scale(0.97)}
 
-  .topsum { background:var(--card); border:1px solid var(--line); border-left:3px solid #ffb454; border-radius:12px; padding:14px 16px; margin:6px 0 18px; }
-  .topsum-h { font-weight:700; font-size:14px; margin-bottom:8px; }
-  .topsum-body { font-size:13.5px; line-height:1.85; }
-  .topsum-body b { color:#ffd9a3; font-weight:700; }
+/* 의사결정 / 산출물 (기존 기능 유지) */
+.deccard{border-left:2px solid var(--accent);background:var(--block);border-radius:0 11px 11px 0;padding:11px 14px;
+  display:flex;flex-direction:column;gap:6px}
+.dechead{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;background:var(--accent-bg);
+  color:var(--accent-ink);flex-shrink:0}
+.decq{font-size:13.5px;color:var(--ink);line-height:1.6}
+.decc{font-size:12.5px;color:var(--add)}
+.filepill{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;flex-shrink:0}
+.tag.new{background:#1f3a2a;color:var(--add)}
+.tag.mod{background:#1f2f4a;color:var(--mod)}
+.tag.del{background:#3a1e1e;color:var(--del)}
 
-  .aibox { margin:14px 0; }
-  .aibtn { background:var(--accent); color:#1a0f15; border:none; padding:9px 16px; border-radius:9px; font-size:13px; font-weight:700; cursor:pointer; }
-  .aibtn:disabled { opacity:.5; cursor:wait; }
-  .aiout { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .mermaid { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; overflow:auto; }
-  .hint { color:var(--muted); font-size:12.5px; margin:6px 0 14px; }
-  .usage { margin-top:8px; font-size:12px; color:var(--muted); font-family:var(--mono); }
-  .usage b { color:var(--ink); font-weight:600; }
+/* ══ 5. 구조 탭 ══ */
+.tree{display:flex;flex-direction:column;gap:3px;font-family:var(--mono);font-size:13px}
+.tree .d{padding:7px 10px;color:var(--ink-2)}
+.tree .f{padding:7px 10px 7px 30px;color:var(--muted);border-radius:7px}
+.tree .f.hot{background:rgba(255,95,168,.1);color:var(--accent)}
+.tree .add{color:var(--add);font-size:11.5px}
+.tree .del{color:var(--del);font-size:11.5px}
+.pill{font-size:10.5px;padding:1px 7px;border-radius:20px}
+.pill.mod{background:#1f2f4a;color:var(--mod)}
+.pill.new{background:#1f3a2a;color:var(--add)}
+.pill.del{background:#3a1e1e;color:var(--del)}
 
-  /* 긴 블록 접기 */
-  .clamp { max-height:340px; overflow:hidden; }
-  .clamp.mini { max-height:66px; }            /* 파일 수정 diff 기본 3줄만 */
-  .clamp.open { max-height:none; overflow:auto; }
-  .clamp-toggle { display:block; width:100%; border:none; background:#26242c; color:var(--accent);
-    font-size:12px; font-weight:600; padding:6px; cursor:pointer; }
-  .clamp-toggle:hover { background:#2e2c36; }
+/* ══ 6. 변경 탭 ══ */
+.chg{display:flex;flex-direction:column;gap:12px;width:100%;max-width:var(--content-max)}
+.chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{font-size:11.5px;padding:4px 10px;border-radius:20px}
+.chip.new{background:#1f3a2a;color:var(--add)}
+.chip.mod{background:#1f2f4a;color:var(--mod)}
+.chip.del{background:#3a1e1e;color:var(--del)}
+.ghostbtn{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:4px 9px;border-radius:6px;
+  border:1px solid var(--line);transition:transform 160ms var(--ease),color 160ms ease}
+.ghostbtn:active{transform:scale(0.97)}
+.fblock{border:1px solid var(--line);border-radius:12px;background:var(--block);overflow:hidden}
+.fhead{display:flex;align-items:center;gap:11px;padding:11px 14px;cursor:pointer;transition:background 160ms ease;
+  width:100%;text-align:left}
+.fhead .chev{font-family:var(--mono);font-size:11px;color:var(--muted);width:9px;flex-shrink:0}
+.fhead .p{font-family:var(--mono);font-size:12.5px;color:var(--ink);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fhead .p.gone{color:var(--muted);text-decoration:line-through}
+.fhead .n{font-family:var(--mono);font-size:11.5px;flex-shrink:0}
+.copybtn{font-family:var(--mono);font-size:11px;color:var(--muted-2);flex-shrink:0;transition:color 160ms ease}
+.fbody{border-top:1px solid var(--line);background:var(--code-bg);font-family:var(--mono);font-size:12;
+  line-height:1.9;padding:8px 0;overflow-x:auto}
+.fbody .l{padding:0 14px;white-space:pre;font-size:12px}
+.fbody .l.a{color:var(--add);background:rgba(143,224,171,.07)}
+.fbody .l.d{color:var(--del);background:rgba(239,125,125,.07)}
+.fbody .l.c{color:var(--muted-2)}
+.clipnote{padding:6px 14px;font-family:var(--mono);font-size:11px;color:var(--muted-2)}
 
-  /* FAB */
-  .fab { position:fixed; right:20px; bottom:24px; display:flex; flex-direction:column; gap:8px; z-index:20; }
-  .fab button { width:44px; height:44px; border-radius:50%; border:1px solid var(--line);
-    background:var(--card); box-shadow:0 2px 8px rgba(0,0,0,.4); cursor:pointer; font-size:18px; color:var(--ink); line-height:1; }
-  .fab button:hover { border-color:var(--accent); color:var(--accent); }
+/* ══ 7. 대화 탭 ══ */
+.chat{display:flex;flex-direction:column;gap:15px;width:100%;max-width:var(--content-max)}
+.unit{display:flex;flex-direction:column;gap:9px}
+.sysnote{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-radius:9px;background:#1a1a20;
+  border:1px solid var(--line)}
+.sysnote .k{font-family:var(--mono);font-size:10px;font-weight:800;color:var(--sys);letter-spacing:.06em;
+  flex-shrink:0;padding-top:2px}
+.sysnote .t{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.65;flex:1;min-width:0}
+.sysnote .x{font-family:var(--mono);font-size:11px;color:var(--muted-2);flex-shrink:0;cursor:pointer}
+.sysbody{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word;
+  max-height:340px;overflow:auto;padding:8px 12px;background:var(--code-bg);border-radius:8px}
+.umsg{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+.meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.meta .anchor{font-family:var(--mono);font-size:11px;color:var(--muted-2)}
+.meta .lnk{cursor:pointer;transition:color 160ms ease}
+.meta .time{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.meta .who{font-size:12px;font-weight:700;color:var(--ink-2)}
+.meta .tok{font-family:var(--mono);font-size:11px;color:var(--muted-2)}
+.ubub{max-width:min(84%,720px);padding:11px 14px;border-radius:12px 2px 12px 12px;background:#1d2740;border:1px solid #2c3a5c;
+  font-size:14px;color:var(--ink);line-height:1.65;text-wrap:pretty;word-break:break-word}
+.ubub.clamp{max-height:16em;overflow:hidden}
+.moreline{align-self:flex-end;font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer}
+.amsg{display:flex;flex-direction:column;gap:9px}
+/* 턴 = 사용자 발화 1회에 대한 Claude의 연속 응답 묶음. 헤더는 맨 위 한 번만. */
+.turn{display:flex;flex-direction:column;gap:10px}
+.turnhead{position:sticky;top:0;z-index:1;padding:4px 0;background:linear-gradient(180deg,var(--bg) 60%,transparent)}
+.turnbody{display:flex;flex-direction:column;gap:11px;padding-left:27px;
+  border-left:1px solid var(--line-soft);margin-left:9px}
+.turnbody > .abody{margin:0}
+.cicon{width:19px;height:19px;flex-shrink:0;display:block}
+.aname{font-size:12px;font-weight:700;color:var(--accent)}
+.abody{font-size:14px;color:var(--ink-3);line-height:1.7;text-wrap:pretty;word-break:break-word;max-width:68em}
+.abody p{margin:.5em 0}
+.abody ul,.abody ol{margin:.5em 0;padding-left:1.3em}
+.abody h1,.abody h2,.abody h3{font-size:15px;margin:.8em 0 .3em;color:var(--ink)}
+.abody pre{background:var(--code-bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;overflow:auto}
+.abody pre code{background:none;padding:0;color:#9AEDFE;font-size:12.5px}
+.abody table{border-collapse:collapse;font-size:13px}
+.abody td,.abody th{border:1px solid var(--line);padding:4px 8px}
+.think{border:1px solid var(--line);border-radius:9px;background:var(--block);padding:8px 12px;
+  font-size:12.5px;color:var(--muted)}
+.think .t{font-family:var(--mono);font-size:11px;color:var(--muted-2);cursor:pointer}
+.tgroup{border:1px solid rgba(255,255,255,.06);border-radius:12px;background:#131317;overflow:hidden}
+.thead{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;transition:background 160ms ease;
+  width:100%;text-align:left}
+.thead .chev{font-family:var(--mono);font-size:11px;color:var(--muted);flex-shrink:0}
+.thead .cnt{font-size:12.5px;font-weight:700;color:var(--ink-2);flex-shrink:0}
+.thead .sum{font-family:var(--mono);font-size:11.5px;color:var(--muted);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thead .badge{font-size:10.5px;padding:2px 8px;border-radius:20px;background:#18331f;color:var(--done);flex-shrink:0}
+.thead .badge.err{background:#3a1e1e;color:var(--del)}
+.thead .dur{font-family:var(--mono);font-size:11px;color:var(--muted-2);flex-shrink:0}
+.tbody{border-top:1px solid var(--line)}
+.titem{padding:9px 13px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+.titem:last-child{border-bottom:0}
+.titem .l{display:flex;align-items:center;gap:9px}
+.titem .nm{font-family:var(--mono);font-size:11.5px;flex-shrink:0}
+.titem .ar{font-family:var(--mono);font-size:11.5px;color:var(--muted);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.titem .ok{font-family:var(--mono);font-size:11px;color:var(--done);flex-shrink:0}
+.titem .ok.err{color:var(--del)}
+.tdetail{margin-top:8px;background:var(--code-bg);border:1px solid var(--line);border-radius:9px;padding:9px 12px;
+  font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;
+  max-height:420px;overflow:auto}
+.switchmark{display:flex;align-items:center;gap:11px}
+.switchmark .ln{flex:1;height:1px;background:var(--line)}
+.switchmark .c{display:flex;align-items:center;gap:8px;padding:4px 11px;border-radius:20px;background:#1a1a20;
+  border:1px solid var(--line);flex-shrink:0}
+.switchmark .c .mm{font-family:var(--mono);font-size:10.5px}
+.switchmark .c .ar{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+.switchmark .c .lb{font-size:11.5px;color:var(--muted)}
+.askbox{border:1px solid var(--line);border-radius:12px;background:#131317;padding:11px 13px;
+  display:flex;flex-direction:column;gap:8px}
+.askq{font-size:13.5px;color:var(--ink);line-height:1.6}
+.askopt{font-size:12.5px;color:var(--muted);padding-left:14px}
+.askopt.on{color:var(--add)}
+.hl{background:var(--accent-bg);color:var(--accent-ink);border-radius:3px}
+.hl.cur{background:var(--accent);color:#2c1a26}
+
+/* ══ 8. 플로팅 새 활동 ══ */
+.newbar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:10px;
+  background:linear-gradient(180deg,rgba(21,21,26,0),rgba(21,21,26,.92) 55%);pointer-events:none}
+.newbar[hidden]{display:none}  /* 클래스의 display:flex가 [hidden] 기본값을 덮으므로 명시 */
+.newpill{display:flex;align-items:center;gap:9px;padding:7px 14px;border-radius:20px;background:var(--accent-bg);
+  border:1px solid rgba(255,95,168,.34);box-shadow:0 6px 20px rgba(0,0,0,.45);pointer-events:auto;
+  transition:transform 160ms var(--ease)}
+.newpill:active{transform:scale(0.97)}
+.newpill i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:block}
+.newpill .t{font-size:12.5px;font-weight:600;color:var(--accent-ink)}
+.newpill .s{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+/* ══ 빈/에러 상태 ══ */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  padding:40px 46px;text-align:center}
+.empty .ic{width:52px;height:52px;border-radius:14px;background:var(--card);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;color:var(--muted-2)}
+.empty .h{font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.empty .d{font-size:14px;color:var(--muted);line-height:1.75;text-wrap:pretty;max-width:460px}
+.empty .d .m{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+.empty .acts{display:flex;gap:9px;padding-top:4px}
+.btn-primary{font-family:var(--mono);padding:8px 14px;border-radius:8px;background:var(--accent);color:#2c1a26;
+  font-size:12.5px;font-weight:700;transition:transform 160ms var(--ease)}
+.btn-primary:active{transform:scale(0.97)}
+.btn-sec{font-family:var(--mono);padding:8px 14px;border-radius:8px;background:var(--card);border:1px solid var(--line);
+  color:var(--ink);font-size:12.5px;transition:transform 160ms var(--ease)}
+.btn-sec:active{transform:scale(0.97)}
+.ssenote{display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 12px;border-radius:8px;
+  background:#1a1a20;border:1px solid var(--line)}
+.ssenote .k{font-family:var(--mono);font-size:10px;font-weight:800;color:var(--sys)}
+.ssenote .t{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* 하단 모바일 탭바 (데스크탑에선 숨김) */
+.mobtabs{display:none}
+
+@media (hover:hover) and (pointer:fine){
+  .tabgroup button:hover{color:var(--ink)}
+  .railbtn:hover{background:var(--line);color:var(--ink)}
+  .projsel:hover{background:#22222a}
+  .dgroup:hover{background:var(--bg)}
+  .srow:hover{background:#191920}
+  .railfoot:hover{background:#191920}
+  .renamebtn:hover{color:var(--ink)}
+  .fhead:hover{background:var(--card)}
+  .thead:hover{background:#191920}
+  .ghostbtn:hover{color:var(--ink)}
+  .copybtn:hover{color:var(--ink)}
+  .navhit:hover{color:var(--ink)}
+  .aibtn:hover{color:var(--ink)}
+  .meta .lnk:hover{color:var(--accent)}
+  .modal .iconbtn:hover{background:var(--line);color:var(--ink)}
+}
+
+/* ══ 반응형 ══ */
+@media (max-width:1180px){ .rail{width:48px;align-items:center;padding:13px 0;gap:8px}
+  .rail .rail-head,.rail .raillist,.rail .railfoot,.rail .statusline{display:none}
+  .rail .railmini{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;width:100%} }
+@media (max-width:820px){
+  body{overflow:auto}
+  .hero{padding:12px 14px 11px;gap:10px;flex-wrap:wrap}
+  /* 지표는 줄바꿈으로 흘린다 — 가로 스크롤로 두면 Export가 화면 밖에서 잘린다 */
+  .hero-r{gap:10px 14px;width:100%;flex-wrap:wrap;align-items:flex-end}
+  .hero-r .vr{display:none}
+  .metric{align-items:flex-start}
+  .metric .num{font-size:16px}
+  .metric .lab{font-size:10px}
+  .btn-export{margin-left:auto}
+  .hero-title{font-size:15px}
+  .rail{display:none}
+  .tabbar{padding:0 12px;gap:8px}
+  .tabgroup{display:none}
+  .keep .lab{font-size:11px}
+  .searchbox{max-width:none}
+  .scroller{padding:16px 14px 96px}
+  .grid2{grid-template-columns:1fr}
+  .legend{grid-template-columns:1fr}
+  .mobtabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;border-top:1px solid var(--line);
+    background:var(--panel);padding:10px 0 22px}
+  .mobtabs button{flex:1;text-align:center;font-size:11.5px;font-weight:600;color:var(--muted)}
+  .mobtabs button.on{color:var(--accent);font-weight:700}
+  .newbar{bottom:64px}
+}
+/* 모바일 헤더 한 줄 유지 — 로고는 절대 줄바꿈/축소되지 않는다 */
+.hero-brand{display:none}
+@media (max-width:820px){
+  .hero-brand{display:flex;align-items:center;gap:9px;width:100%;overflow:hidden}
+  .hero-brand .lg{font-size:15px;flex-shrink:0}
+  .hero-brand .nm{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);
+    white-space:nowrap;flex-shrink:0}
+  .hero-brand .sn{font-family:var(--mono);font-size:12px;color:var(--sess);flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hero-title,.hero-path{display:none}
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="topline">
-    <a href="/" id="listLink" class="hbtn" title="전체 세션 목록으로"><svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 8.66667H3.33333V7.33333H2V8.66667ZM2 11.3333H3.33333V10H2V11.3333ZM2 6H3.33333V4.66667H2V6ZM4.66667 8.66667H14V7.33333H4.66667V8.66667ZM4.66667 11.3333H14V10H4.66667V11.3333ZM4.66667 4.66667V6H14V4.66667H4.66667Z" fill="currentColor"/></svg>List</a>
-    <h1>🦞 claude-watch</h1>
-    <span class="ver" id="ver"></span>
-    <span class="topdiv" id="topDiv" hidden>|</span>
-    <span class="sessname" id="sessName"></span>
-    <div class="usagebar" id="usagebar" title="이 세션 누적 토큰 · API 환산 추정 비용 (구독제면 실제 청구액 아님)">집계 중…</div>
-    <div class="status"><span id="dot" class="dot"></span><span id="stat">연결 중…</span></div>
-    <button id="exportBtn" class="hbtn" title="이 세션을 자체완결 HTML 파일로 내보내기"><svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11.3 3.97867L10.3573 4.92133L8.66667 3.23067V11.3613H7.33333V3.23133L5.64333 4.92133L4.7 3.97867L8 0.678667L11.3 3.97867Z" fill="currentColor"/><path d="M3.33333 13.988V7.32133H6V5.988H2V15.3213H14V5.988H10V7.32133H12.6667V13.988H3.33333Z" fill="currentColor"/></svg><span class="lbl">Export</span></button>
+
+<div class="hero" id="hero">
+  <div class="hero-brand">
+    <span class="lg">🦞</span><span class="nm">claude-watch</span>
+    <span class="livedot pulse" id="mdot"></span>
+    <span class="sn" id="mname"></span>
   </div>
-  <div class="tabs" id="tabs"></div>
-</header>
-<main id="view"></main>
-<div class="fab">
-  <button id="fabTop" title="처음으로">⤒</button>
-  <button id="fabBottom" title="가장 최근 대화로">⤓</button>
+  <div class="hero-l">
+    <div class="hero-status">
+      <span class="livedot pulse" id="dot"></span>
+      <span class="statustext" id="stat">연결 중…</span>
+      <span id="curmodel"></span>
+      <span class="plusmodels" id="plusmodels"></span>
+    </div>
+    <div class="hero-title" id="htitle">세션을 불러오는 중…</div>
+    <div class="hero-path" id="hpath"></div>
+  </div>
+  <div class="hero-r" id="metrics"></div>
 </div>
+
+
+<div class="shell">
+  <div class="rail" id="rail">
+    <div class="rail-head">
+      <div class="row1">
+        <div class="rail-lab">프로젝트</div>
+        <div class="spacer"></div>
+        <button class="railbtn" id="railtoggle" title="목록 접기">‹‹</button>
+      </div>
+      <button class="projsel" id="projsel">
+        <span class="dot"></span>
+        <span class="projpath"><span class="par" id="ppar"></span><span class="leaf" id="pleaf"></span></span>
+        <span class="cnt" id="pcnt"></span><span class="car">▾</span>
+      </button>
+    </div>
+    <div class="raillist" id="raillist"></div>
+    <button class="railfoot" id="railfoot"><span class="l"></span><span class="r"></span></button>
+    <div class="statusline">
+      <div class="lab">터미널 STATUSLINE</div>
+      <div class="body" id="slpreview"></div>
+    </div>
+    <div class="railmini" id="railmini"></div>
+  </div>
+
+  <div class="mainwrap">
+    <div class="tabbar">
+      <div class="tabgroup" id="tabs"></div>
+      <div class="searchbox">
+        <span class="ico">⌕</span>
+        <input id="q" placeholder="세션 내에서 검색하기" autocomplete="off" />
+        <span class="hits" id="hits"></span>
+        <button class="navhit" id="hprev" title="이전 결과">↑</button>
+        <button class="navhit" id="hnext" title="다음 결과">↓</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="keep">
+        <span class="lab">펼침 유지</span>
+        <button class="switch on" id="keep" role="switch" aria-checked="true" aria-label="펼침 유지"><i></i></button>
+      </div>
+    </div>
+    <div class="scroller" id="scroller"><div id="view"></div></div>
+    <div class="newbar" id="newbar" hidden>
+      <button class="newpill" id="newpill"><i class="pulse"></i><span class="t"></span><span class="s">맨 아래로 ↓</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="mobtabs" id="mobtabs"></div>
 
 <script>
 const SESSION = "__SESSION_ID__";
@@ -294,62 +574,80 @@ const EXPORT = (() => {
   if (!el) return null;
   try { return JSON.parse(el.textContent); } catch (e) { console.error("export data parse 실패", e); return null; }
 })();
-let EVENTS = EXPORT ? EXPORT.events : [];
-let TAB = "raw";
-const view = document.getElementById("view");
-const dot = document.getElementById("dot");
-const stat = document.getElementById("stat");
-const usagebar = document.getElementById("usagebar");
-let mermaidSeq = 0;
-
-// 버전 라벨 (Figma 디자인 반영): latest일 때만 "/latest"를 네온그린으로 표기
-// ※ 실제 최신 여부 판정(레지스트리/서버 조회)은 후속 — 우선 표시 구조만
-const CW_VERSION = "1.00";
-const CW_IS_LATEST = true;
-(function renderVersion() {
-  const el = document.getElementById("ver");
-  if (!el) return;
-  el.innerHTML = `${CW_VERSION}v` + (CW_IS_LATEST ? `<span class="latest">/latest</span>` : "");
-})();
-
-// 세션 이름(제목): 첫 사용자 요청 한 줄 (Figma sessionName 슬롯). 값 있을 때만 divider 표시
-function renderSessionName() {
-  const el = document.getElementById("sessName"), dv = document.getElementById("topDiv");
-  if (!el) return;
-  const u = EVENTS.find(e => e.kind === "user_text" && e.text && !e.text.startsWith("[") && e.text.length < 2000);
-  const name = u ? u.text.split("\n")[0].slice(0, 60).trim() : "";
-  el.textContent = name;
-  if (dv) dv.hidden = !name;
-}
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-const clampWrap = (inner, cls = "") => `<div class="clamp ${cls}">${inner}</div>`;
-const fileName = (p) => String(p || "").split("/").slice(-2).join("/");
-const base = (p) => String(p || "").split("/").pop();
-const topDir = (p) => { const parts = String(p||"").split("/").filter(Boolean); const i = parts.findIndex(x=>x==="src"||x==="lib"||x==="backend"||x==="public"||x==="app"); return i>=0 ? parts[i] : (parts.length>1?parts[parts.length-2]:"root"); };
+const $ = (id) => document.getElementById(id);
+const view = $("view"), scroller = $("scroller");
 
-// 토큰 수 축약 (123456 → 123.5k, 4530000 → 4.5M)
-const fmtTok = (n) => n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(1)+"k" : String(n);
+/* ── 상태 ─────────────────────────────────────────────── */
+let EVENTS = EXPORT ? EXPORT.events : [];
+let AGG = EXPORT ? EXPORT.agg : null;
+let USAGE = EXPORT ? EXPORT.usage : null;
+let SESS = EXPORT ? EXPORT.session : null;
+let INDEX = [];                       // 레일용 세션 색인
+let NOTFOUND = false;
 
-// ── 타임스탬프 (F) ───────────────────────────────────────
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("cw:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("cw:" + k, JSON.stringify(v)); } catch {} },
+};
+const TAB_IDS = ["summary", "arch", "changes", "raw"];
+let TAB = (() => {
+  const t = new URLSearchParams(location.search).get("tab");
+  return TAB_IDS.includes(t) ? t : "summary";
+})();
+let railOpen = store.get("railOpen", true);
+let keepExpanded = store.get("keepExpanded", true);
+const groupOpen = store.get("groupOpen", {});     // 레일 날짜 그룹
+const fileOpen = {};                              // 변경 탭 파일 블록
+const openState = {};                             // 도구 그룹/시스템 노트 펼침
+let railProject = null;                           // 레일에 표시할 프로젝트(드롭다운으로 전환)
+let searchQ = "", hitIdx = 0, hitEls = [];
+let newActivity = 0, atBottom = true;
+let editingName = false;
+
+/* ── 유틸 ─────────────────────────────────────────────── */
 function fmtTs(iso) {
   if (!iso) return "";
   const d = new Date(iso); if (isNaN(d)) return "";
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
-
-// ── 마크다운(H) / 코드(G) ────────────────────────────────
+function fmtClock(iso) {
+  if (!iso) return "";
+  const d = new Date(iso); if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function kfmt(n) {
+  n = Number(n || 0);
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e3) return Math.round(n / 1e3) + "K";
+  return String(n);
+}
+const money = (c) => "$" + Number(c || 0).toFixed(2);
+function dur(ms) {
+  ms = Number(ms || 0);
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + ":" + String(s % 60).padStart(2, "0");
+  const h = Math.floor(m / 60);
+  return h + "시간 " + (m % 60) + "분";
+}
+const famOf = (m) => { m = String(m || ""); return m.includes("opus") ? "opus" : m.includes("haiku") ? "haiku"
+  : m.includes("sonnet") ? "sonnet" : m.includes("fable") ? "fable" : "other"; };
+const shortModel = (m) => String(m || "").replace(/^claude-/, "").replace(/-\d{8}$/, "");
+function modelChip(model) {
+  if (!model || model === "<synthetic>") return "";
+  const f = famOf(model);
+  return `<span class="mchip m-${f}"><i></i><span>${esc(shortModel(model))}</span></span>`;
+}
 function md(t) {
   try { return window.marked ? marked.parse(String(t || ""), { breaks: true }) : esc(t); }
   catch { return esc(t); }
 }
-const EXT2LANG = { js:"javascript", mjs:"javascript", cjs:"javascript", jsx:"javascript", ts:"typescript", tsx:"typescript",
-  java:"java", py:"python", rb:"ruby", go:"go", rs:"rust", sh:"bash", bash:"bash", zsh:"bash", json:"json",
-  css:"css", scss:"scss", html:"xml", xml:"xml", md:"markdown", yml:"yaml", yaml:"yaml", sql:"sql",
-  kt:"kotlin", swift:"swift", c:"c", h:"c", cpp:"cpp", cc:"cpp", php:"php", vue:"xml" };
-const langFromPath = (p) => EXT2LANG[String(p||"").split(".").pop().toLowerCase()] || "";
-const codeBlock = (code, lang) => `<pre class="code"><code class="${lang ? "language-"+lang : ""}">${esc(code)}</code></pre>`;
 function highlightCode() {
   if (!window.hljs) return;
   view.querySelectorAll("pre code:not([data-hl])").forEach((el) => {
@@ -357,566 +655,1325 @@ function highlightCode() {
     try { hljs.highlightElement(el); } catch {}
   });
 }
+const CLAUDE_ICON = `<svg class="cicon" viewBox="0 0 24 24" aria-hidden="true"><path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"></path></svg>`;
+const FOLDER_ICON = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <path d="M1.75 4.25A1.5 1.5 0 0 1 3.25 2.75h2.4c.4 0 .78.16 1.06.44l.9.9h5.14a1.5 1.5 0 0 1 1.5 1.5v6.16a1.5 1.5 0 0 1-1.5 1.5H3.25a1.5 1.5 0 0 1-1.5-1.5V4.25Z"
+    stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+  <path d="M1.75 6.6h12.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+const CHEV_DOWN = `<svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8L9.5 4.5" stroke="#8b8b96" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CHEV_RIGHT = `<svg width="13" height="13" viewBox="0 0 12 12" fill="none"><path d="M4.5 2.5L8 6L4.5 9.5" stroke="#8b8b96" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-// ── 탭 정의 ──────────────────────────────────────────────
+// 홈 디렉터리는 "~" 가 아니라 "~/" 로 — 폴더라는 게 드러나야 프로젝트 선택기에서 읽힌다
+const shortPath = (p) => { const s = String(p || "").replace(/^\/Users\/[^/]+/, "~"); return s === "~" ? "~/" : s; };
+const baseName = (p) => String(p || "").split("/").filter(Boolean).pop() || "";
+
+/* ── 히어로 ───────────────────────────────────────────── */
+function renderHero() {
+  if (!AGG || !SESS) return;
+  const st = AGG.stats || {};
+  const live = isLive();
+  const durMs = (st.firstTs && st.lastTs) ? (new Date(st.lastTs) - new Date(st.firstTs)) : 0;
+  $("dot").className = "livedot" + (live ? " pulse" : " off");
+  $("mdot").className = "livedot" + (live ? " pulse" : " off");
+  const stEl = $("stat");
+  stEl.className = "statustext" + (live ? "" : " off");
+  stEl.textContent = live ? `RUNNING · ${dur(durMs)}` : `종료 · 총 ${dur(durMs)}`;
+
+  const models = (AGG.models && AGG.models.list) || [];
+  const cur = (AGG.models && AGG.models.current) || (models[0] && models[0].model) || "";
+  $("curmodel").innerHTML = modelChip(cur);
+  const others = models.map(m => m.model).filter(m => m !== cur);
+  $("plusmodels").textContent = others.length ? others.map(m => "+" + famOf(m)).join(" ") : "";
+
+  const title = sessionTitle();
+  $("htitle").textContent = title;
+  $("mname").textContent = title;
+  document.title = `${title} · claude-watch`;
+  $("hpath").innerHTML = `${esc(shortPath(SESS.cwd || SESS.project))} · <span class="sname">${esc(title)}</span>`
+    + (st.firstTs ? ` · 시작 ${esc(fmtTs(st.firstTs))}` : "")
+    + (st.lastTs ? ` · 마지막 작업 ${esc(fmtTs(st.lastTs))}` : "");
+
+  const totalTok = USAGE ? USAGE.total : 0;
+  const cost = USAGE ? USAGE.cost : 0;
+  let add = 0, del = 0;
+  for (const f of (AGG.files || [])) { add += f.add || 0; del += f.del || 0; }
+  const agents = (AGG.agents || []).length;
+
+  $("metrics").innerHTML = [
+    metric("주고받은 대화", `<span class="num">${AGG.turns || 0}</span><span class="unit">회</span>`),
+    `<div class="vr"></div>`,
+    metric("서브에이전트", `<span class="num" style="color:var(--agent)">${agents}</span><span class="unit">개</span>`),
+    `<div class="vr"></div>`,
+    metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`),
+    `<div class="vr"></div>`,
+    metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:16px;font-weight:700;color:var(--del)">−${del}</span>`),
+    `<button class="btn-export" id="exportBtn">Export</button>`,
+  ].join("");
+  if (EXPORT) $("exportBtn").remove();
+  else $("exportBtn").onclick = doExport;
+}
+const metric = (lab, val) => `<div class="metric"><div class="lab">${lab}</div><div class="val">${val}</div></div>`;
+
+function isLive() {
+  if (EXPORT) return false;
+  const last = AGG && AGG.stats && AGG.stats.lastTs;
+  if (!last) return false;
+  return (Date.now() - new Date(last).getTime()) < 5 * 60 * 1000; // 5분 내 활동 = 진행 중
+}
+function sessionTitle() {
+  const row = INDEX.find(x => x.id === SESSION);
+  if (row && row.title) return row.title;
+  const u = EVENTS.find(e => e.kind === "user_text" && e.text);
+  return u ? u.text.split("\n")[0].slice(0, 60) : SESSION.slice(0, 8);
+}
+
+/* ── 탭 ───────────────────────────────────────────────── */
 const TABS = [
-  { id: "raw",     label: "Raw", render: renderRaw },
-  { id: "summary", label: "Summary", render: renderSummary },
-  { id: "diagram", label: "Architecture", render: renderDiagram },
-  { id: "diff",    label: "Changes", render: renderDiff },
+  { id: "summary", label: "요약",  render: renderSummary },
+  { id: "arch",    label: "구조",  render: renderArch },
+  { id: "changes", label: "변경",  render: renderChanges },
+  { id: "raw",     label: "대화",  render: renderChat },
 ];
 function renderTabs() {
-  document.getElementById("tabs").innerHTML = TABS.map(t =>
-    `<button class="${t.id===TAB?'on':''}" data-tab="${t.id}">${t.label}</button>`).join("");
-  document.querySelectorAll("[data-tab]").forEach(b =>
-    b.onclick = () => { TAB = b.dataset.tab; renderTabs(); draw(); });
-}
-function draw() { TABS.find(t => t.id === TAB).render(); highlightCode(); applyClamps(); applyUserClamps(); }
-// 사용자 입력 버블: 10줄 초과 시 '펼치기' 버튼 부착
-function applyUserClamps() {
-  view.querySelectorAll(".uctext.uclamp:not([data-uc])").forEach((el) => {
-    el.setAttribute("data-uc", "1");
-    if (el.scrollHeight <= el.clientHeight + 2) { el.classList.remove("uclamp"); return; }
-    const bubble = el.closest(".bubble") || el;
-    const btn = document.createElement("button");
-    btn.className = "uc-toggle"; btn.textContent = "⌄ 펼치기";
-    btn.onclick = () => {
-      const open = el.classList.toggle("open");
-      btn.textContent = open ? "⌃ 접기" : "⌄ 펼치기";
-      if (!open) bubble.scrollIntoView({ block: "nearest" });
-    };
-    bubble.after(btn);
+  $("tabs").innerHTML = TABS.map(t =>
+    `<button data-tab="${t.id}" class="${t.id === TAB ? "on" : ""}">${t.label}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  $("mobtabs").innerHTML = TABS.map(t =>
+    `<button data-tab="${t.id}" class="${t.id === TAB ? "on" : ""}">${t.label}</button>`).join("")
+    + `<button data-tab="__rail">세션</button>`;
+  $("mobtabs").querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (b.dataset.tab === "__rail") { location.href = "/"; return; }
+    setTab(b.dataset.tab);
   });
 }
-
-function applyClamps() {
-  view.querySelectorAll(".clamp:not([data-clamp])").forEach((el) => {
-    el.setAttribute("data-clamp", "1");
-    if (el.scrollHeight <= el.clientHeight + 4) { el.classList.remove("clamp"); return; }
-    const btn = document.createElement("button");
-    btn.className = "clamp-toggle"; btn.textContent = "⌄ 더 보기";
-    btn.onclick = () => {
-      const open = el.classList.toggle("open");
-      btn.textContent = open ? "⌃ 접기" : "⌄ 더 보기";
-      if (!open) el.scrollIntoView({ block: "nearest" });
-    };
-    el.after(btn);
-  });
+function setTab(id) {
+  if (!TAB_IDS.includes(id) || id === TAB) return;
+  TAB = id;
+  const u = new URL(location.href);
+  u.searchParams.set("tab", id);
+  history.replaceState(null, "", u);
+  renderTabs(); draw(); syncSearchVisibility();
+  scroller.scrollTop = 0;
+  atBottom = true; farUp = false; updateNewBar();
+}
+function draw() {
+  if (NOTFOUND) return;
+  const t = TABS.find(x => x.id === TAB);
+  view.innerHTML = "";
+  t.render();
+  highlightCode();
+  applySearch();
 }
 
-// ── 탭1: Raw 대화 ────────────────────────────────────────
-function renderRaw() {
-  const frag = document.createDocumentFragment();
-  let i = 0;
-  while (i < EVENTS.length) {
-    const e = EVENTS[i];
-    // 연속된 도구 호출(AskUserQuestion 제외)을 하나의 그룹으로 묶음
-    if (e.kind === "tool_use" && e.name !== "AskUserQuestion") {
-      const group = [];
-      while (i < EVENTS.length && EVENTS[i].kind === "tool_use" && EVENTS[i].name !== "AskUserQuestion") {
-        group.push(EVENTS[i]); i++;
-      }
-      frag.appendChild(renderToolGroup(group));
-    } else {
-      frag.appendChild(renderEvent(e));
-      i++;
-    }
-  }
-  view.replaceChildren(frag);
-}
-// 도구별 한 줄 요약 정보(아이콘·이름·미리보기)
-function toolInfo(e) {
-  const i = e.input || {};
-  switch (e.name) {
-    case "Bash":  return { icon: "⚡", name: "Bash",  pv: oneLine("$ " + (i.command || "")) };
-    case "Edit":  return { icon: "📝", name: "Edit",  pv: fileName(i.file_path) };
-    case "Write": return { icon: "📄", name: "Write", pv: fileName(i.file_path) };
-    case "Read":  return { icon: "📖", name: "Read",  pv: fileName(i.file_path) };
-    default:      return { icon: "🔧", name: e.name,  pv: oneLine(JSON.stringify(i)) };
-  }
-}
-// 결과를 토글 없이 바로 표시(전체 펼침). 길면 CSS로 클립(overflow:hidden).
-function resultInline(e) {
-  if (e.result == null || e.result === "") return "";
-  return `<pre class="ac-result${e.isError ? " err" : ""}">${esc(e.result)}</pre>`;
-}
-// 도구별 펼침 상세(명령·diff·내용·JSON + 결과). 없으면 "" → 비확장 행
-function toolDetail(e) {
-  const i = e.input || {};
-  switch (e.name) {
-    case "Bash":  return codeBlock("$ " + (i.command || ""), "bash") +
-      (i.description ? `<div class="desc">${esc(i.description)}</div>` : "") + resultInline(e);
-    case "Edit":  return editDiff(i) + resultInline(e);
-    case "Write": return codeBlock(String(i.content || "").slice(0, 4000), langFromPath(i.file_path)) + resultInline(e);
-    case "Read":  return resultInline(e); // 보통 결과 없음 → 빈 문자열
-    default:      return codeBlock(JSON.stringify(i, null, 2).slice(0, 1500), "json") + resultInline(e);
-  }
-}
-// 연속 도구 호출 → 그룹 컨테이너(기본 접힘) + 레일 타임라인
-function renderToolGroup(group) {
-  const nErr = group.filter((e) => e.isError).length;
-  const status = nErr ? `<span class="tg-err">${nErr} 실패</span>` : `<span class="tg-ok">모두 완료</span>`;
-  const rows = group.map((e) => {
-    const { icon, name, pv } = toolInfo(e);
-    const stat = e.isError ? `<span class="ac-x">✗</span>` : `<span class="ac-chk">✓</span>`;
-    const inner = `<span class="ac-ic">${icon}</span><span class="ac-nm">${esc(name)}</span>`+
-      `<span class="ac-pv">${esc(pv)}</span>${tsSpan(e)}${stat}`;
-    const detail = toolDetail(e);
-    return detail
-      ? `<details class="ac-item${e.isError ? " err" : ""}"><summary class="ac-row">${inner}</summary><div class="ac-detail">${detail}</div></details>`
-      : `<div class="ac-item${e.isError ? " err" : ""}"><div class="ac-row norow">${inner}</div></div>`;
-  }).join("");
-  const d = document.createElement("details"); // open 없음 = 기본 접힘
-  d.className = "toolgroup";
-  d.innerHTML = `<summary class="tg-head"><span>🛠</span><span class="tg-cnt">도구 ${group.length}</span>`+
-    `<span>·</span>${status}<span class="tg-caret">▸</span></summary>`+
-    `<div class="ac-rail">${rows}</div>`;
-  return d;
-}
-// Claude Code 공식 로고(오렌지 [*] 마크) — 🤖 대체
-const CLAUDE_ICON = `<svg class="cicon" viewBox="0 0 24 24" aria-hidden="true"><path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"></path></svg>`;
-function head(who, cls, ts) {
-  return `<div class="msghead"><span class="who ${cls}">${who}</span><span class="ts">${fmtTs(ts)}</span></div>`;
-}
-function renderEvent(e) {
+/* ── 요약 탭 ──────────────────────────────────────────── */
+function renderSummary() {
+  const a = AGG || {};
   const wrap = document.createElement("div");
-  wrap.className = "ev " + e.kind;
-  if (e.kind === "user_text") {
-    const names = e.imageNames || [];
-    const nImg = names.length || e.images || 0;
-    const attach = nImg ? `<div class="attach">🖼️ ${names.length ? names.map(esc).join(" · ") : "첨부 이미지 " + nImg + "개"}</div>` : "";
-    // 기본 10줄까지 표시, 넘으면 10줄 + '펼치기'(applyUserClamps에서 버튼 부착)
-    // 클램프는 안쪽 래퍼(.uctext)에만 → 말풍선 꼬리(::before/::after)가 안 잘림
-    const body = e.text ? `<div class="bubble"><div class="uctext uclamp">${esc(e.text)}</div></div>` : "";
-    wrap.innerHTML = head("나", "", e.ts) + body + attach;
-  } else if (e.kind === "assistant_text") {
-    wrap.innerHTML = head(CLAUDE_ICON + "Claude", "", e.ts) + `<div class="bubble md">${clampWrap(md(e.text))}</div>`;
-  } else if (e.kind === "thinking") {
-    wrap.innerHTML = `<details class="think"><summary>💭 생각 펼치기</summary><div class="body">${esc(e.text)}</div></details>`;
-  } else if (e.kind === "image") {
-    wrap.innerHTML = `<div class="bubble" style="color:var(--muted)">🖼️ 첨부 이미지</div>`;
-  } else if (e.kind === "system_note") {
-    const pv = (e.text || "").replace(/\s+/g, " ").trim();
-    wrap.innerHTML = `<div class="sysnote"><span class="sys-label">SYSTEM</span><span class="systext" title="${esc(e.text)}">${esc(pv)}</span></div>`;
-  } else if (e.kind === "tool_use") {
-    wrap.appendChild(renderTool(e));
-  }
-  return wrap;
-}
-function badge(e){ if(e.result==null) return ""; return e.isError?`<span class="badge err">실패</span>`:`<span class="badge">완료</span>`; }
-function tsSpan(e){ return e.ts?`<span class="ts">${fmtTs(e.ts)}</span>`:""; }
-function resultBlock(e){ if(!e.result) return ""; const l=e.isError?"⚠️ 오류 결과 펼치기":"결과 펼치기"; return `<details class="result"><summary>${l}</summary><pre>${esc(e.result)}</pre></details>`; }
-function editDiff(i){
-  const del = String(i.old_string||"").split("\n").map(l=>`<div class="l del">- ${esc(l)}</div>`).join("");
-  const add = String(i.new_string||"").split("\n").map(l=>`<div class="l add">+ ${esc(l)}</div>`).join("");
-  return `<div class="diff">${del}${add}</div>`;
-}
-// 여러 줄 → 한 줄 미리보기(공백 압축, 길이 제한). 넘치면 CSS로 말줄임.
-const oneLine = (s, n = 300) => String(s || "").replace(/\s+/g, " ").trim().slice(0, n);
-// 접기형 도구 카드: summary에 한 줄 미리보기, 클릭 시 body 펼침
-function collapsibleTool(e, icon, name, preview, bodyHTML) {
-  const d = document.createElement("details");
-  d.className = "tool" + (e.isError ? " err" : "");
-  d.innerHTML = `<summary class="head"><span>${icon}</span><span class="name">${esc(name)}</span>`+
-    `<span class="pv">${esc(preview)}</span>${tsSpan(e)}${badge(e)}<span class="caret">▸</span></summary>`+
-    `<div class="tbody">${bodyHTML}</div>`;
-  return d;
-}
-// AskUserQuestion → 가독형(질문 → 옵션+설명, 선택 표시). 기본 펼침
-function renderAsk(e) {
-  const i = e.input || {};
-  const chosen = parseChosen(e.result);
-  const qs = i.questions || [];
-  const preview = qs.map(q => q.header || q.question).filter(Boolean).join(" · ");
-  const body = qs.map(q => {
-    const ch = chosen[q.question];
-    const labels = (q.options || []).map(o => o.label);
-    const matched = labels.includes(ch);
-    const opts = (q.options || []).map(o => {
-      const picked = o.label === ch;
-      return `<div class="aopt${picked ? " picked" : ""}">${picked ? "✓ " : ""}<b>${esc(o.label)}</b>`+
-        (o.description ? `<div class="adesc">${esc(o.description)}</div>` : "") + `</div>`;
-    }).join("");
-    // 옵션 하이라이트로 안 잡히는 경우(직접 입력/Other) 또는 미응답이면 '내 답변'을 명시
-    const ans = matched ? "" : (ch
-      ? `<div class="aans">🗨 <span class="k">내 답변</span> ${esc(ch)}</div>`
-      : `<div class="aans muted">🗨 <span class="k">내 답변</span> (미응답)</div>`);
-    return `<div class="aq"><div class="aqt">${q.header ? `<span class="dtag">${esc(q.header)}</span>` : ""}${esc(q.question)}</div>`+
-      opts + ans + `</div>`;
-  }).join("");
-  const d = document.createElement("details");
-  d.className = "tool ask"; d.open = true;
-  d.innerHTML = `<summary class="head"><span>🤔</span><span class="name">질문</span>`+
-    `<span class="pv">${esc(preview)}</span>${tsSpan(e)}${badge(e)}<span class="caret">▸</span></summary>`+
-    `<div class="tbody">${body}</div>`;
-  return d;
-}
-function renderTool(e) {
-  const i = e.input || {};
-  // 접기형: Bash — 한 줄 명령어 미리보기
-  if (e.name === "Bash") {
-    return collapsibleTool(e, "⚡", "Bash", oneLine("$ " + (i.command || "")),
-      clampWrap(codeBlock("$ " + (i.command || ""), "bash")) +
-      (i.description ? `<div class="desc">${esc(i.description)}</div>` : "") + resultBlock(e));
-  }
-  if (e.name === "AskUserQuestion") return renderAsk(e);
-  // 접기형: Edit(파일 수정) — 기본 펼침, diff는 3줄만(더보기), caret로 전체 접기
-  if (e.name === "Edit") {
-    const d = document.createElement("details");
-    d.className = "tool" + (e.isError ? " err" : "");
-    d.open = true;
-    d.innerHTML = `<summary class="head"><span>📝</span><span class="name">파일 수정</span>`+
-      `<span class="path">${esc(fileName(i.file_path))}</span>${tsSpan(e)}${badge(e)}<span class="caret">▸</span></summary>`+
-      `<div class="tbody">${clampWrap(editDiff(i), "mini")}${resultBlock(e)}</div>`;
-    return d;
-  }
-  // 접기형: Write(파일 생성) — Edit과 동일(기본 펼침, 내용 3줄+더보기, caret로 접기)
-  if (e.name === "Write") {
-    const d = document.createElement("details");
-    d.className = "tool" + (e.isError ? " err" : "");
-    d.open = true;
-    d.innerHTML = `<summary class="head"><span>📄</span><span class="name">파일 생성</span>`+
-      `<span class="path">${esc(fileName(i.file_path))}</span>${tsSpan(e)}${badge(e)}<span class="caret">▸</span></summary>`+
-      `<div class="tbody">${clampWrap(codeBlock(String(i.content||"").slice(0,4000), langFromPath(i.file_path)), "mini")}${resultBlock(e)}</div>`;
-    return d;
-  }
-  // 비접기형: Read (경로만 표시)
-  const card = document.createElement("div");
-  card.className = "tool" + (e.isError ? " err" : "");
-  if (e.name === "Read") {
-    card.innerHTML = `<div class="head"><span>📖</span><span class="name">읽기</span><span class="path">${esc(fileName(i.file_path))}</span>${tsSpan(e)}${badge(e)}</div>`;
-  } else {
-    // 접기형: 기타 도구(ToolSearch·MCP 등) — 한 줄 JSON 미리보기
-    return collapsibleTool(e, "🔧", e.name, oneLine(JSON.stringify(i)),
-      clampWrap(codeBlock(JSON.stringify(i, null, 2).slice(0, 1500), "json")) + resultBlock(e));
-  }
-  return card;
-}
+  wrap.className = "sum";
+  const parts = [];
 
-// ── 변경 파일 집계 ──────────────────────────────────────
-function changedFiles() {
-  const map = new Map();
-  for (const e of EVENTS) {
-    if (e.kind !== "tool_use") continue;
-    const f = e.input?.file_path; if (!f) continue;
-    if (e.name === "Write") map.set(f, { kind: "new", edits: [], content: e.input.content || "" });
-    else if (e.name === "Edit") {
-      const cur = map.get(f) || { kind: "mod", edits: [] };
-      cur.edits.push(e.input);
-      map.set(f, cur);
+  // 1) 한 줄 결론 + 불릿 3개 (AI, 캐시 사용)
+  parts.push(`<div id="aiSum"></div>`);
+
+  // 2) 무엇이 이 세션을 돌렸나 — 스킬 / 도구
+  const skills = a.skills || [];
+  const skTok = skills.reduce((s, x) => s + x.tokens, 0);
+  const tools = (a.tools && a.tools.list) || [];
+  const maxTool = tools.length ? tools[0].count : 1;
+  const TOOLC = { Read: "var(--sonnet)", Edit: "var(--accent)", Write: "var(--accent)", Bash: "var(--sess)",
+                  Task: "var(--agent)", Agent: "var(--agent)" };
+  parts.push(`<div class="divider"></div>
+  <div class="grid2">
+    <div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">사용한 스킬 ${skills.length}개</div><div class="spacer"></div>
+        <div class="secmeta">${skills.length ? "주입 " + kfmt(skTok) + " tok" : ""}</div></div>
+      ${skills.length ? `<div class="listbox">${skills.map(s => `<div class="r" title="${esc(s.name)} · 주입 ${s.tokens.toLocaleString()} tok">
+        <span class="skl">SKL</span><span class="skname">${esc(s.name)}</span>
+        <span class="sktok">${kfmt(s.tokens)}</span></div>`).join("")}</div>`
+        : `<div class="listbox"><div class="r"><span class="sktok">주입된 스킬이 없습니다</span></div></div>`}
+    </div>
+    <div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">도구 호출 ${(a.tools && a.tools.total) || 0}회</div><div class="spacer"></div>
+        <div class="secmeta">${(a.tools && a.tools.fails) ? "실패 " + a.tools.fails : ""}</div></div>
+      <div class="toolbox">${tools.slice(0, 6).map(t => {
+        const c = TOOLC[t.name] || "var(--muted)";
+        // 도구명은 52px 칸에 들어가느라 잘린다(mcp__figma__… 처럼 긴 것들) → 행 전체에 전체 이름 툴팁
+        return `<div class="toolrow" title="${esc(t.name)} · ${t.count}회">
+          <span class="n" style="color:${c}">${esc(t.name)}</span>
+          <span class="track"><span class="fill" style="width:${Math.max(4, Math.round(t.count / maxTool * 100))}%;background:${c}"></span></span>
+          <span class="c">${t.count}</span></div>`;
+      }).join("") || `<div class="secmeta">도구 호출이 없습니다</div>`}</div>
+    </div>
+  </div>`);
+
+  // 3) 서브에이전트
+  const ags = a.agents || [];
+  if (ags.length) {
+    const done = ags.filter(x => !x.running).length;
+    const run = ags.length - done;
+    const tok = ags.reduce((s, x) => s + (x.tokens || 0), 0);
+    parts.push(`<div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">서브에이전트 ${ags.length}개</div><div class="spacer"></div>
+        <div class="secmeta" style="color:var(--agent-muted)">${done} 완료${run ? " · " + run + " 진행" : ""} · ${kfmt(tok)} tok</div></div>
+      <div class="agentbox">${ags.map(x => agentRow(x)).join("")}</div>
+    </div>`);
+  }
+
+  // 4) 모델 비율
+  const models = (a.models && a.models.list) || [];
+  if (models.length) {
+    const tot = models.reduce((s, m) => s + m.total, 0) || 1;
+    const cost = models.reduce((s, m) => s + m.cost, 0);
+    parts.push(`<div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">모델 ${models.length}종 · 전환 ${(a.models.switches || []).length}회</div>
+        <div class="spacer"></div>
+        <div class="secmeta">${tot.toLocaleString()} tok · ${money(cost)}</div></div>
+      <div class="ratio">${models.map(m => `<div style="flex:${Math.max(1, Math.round(m.total / tot * 100))};background:var(--${famOf(m.model)})"></div>`).join("")}</div>
+      <div class="legend">${models.map(m => `<div class="l"><span class="sw" style="background:var(--${famOf(m.model)})"></span>
+        <span class="nm">${esc(shortModel(m.model))}</span><span class="v">${kfmt(m.total)} · ${money(m.cost)}</span></div>`).join("")}</div>
+    </div>`);
+  }
+
+  // 5) 의사결정 · 산출물 (기존 claude-watch 기능 유지)
+  const decs = a.decisions || [];
+  const files = a.files || [];
+  if (decs.length || files.length) {
+    parts.push(`<div class="divider"></div>`);
+    if (decs.length) parts.push(`<div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">의사결정 ${decs.length}건</div></div>
+      <div class="pane" style="gap:8px">${decs.map(d => `<div class="deccard">
+        <div style="display:flex;gap:9px;align-items:flex-start">
+          ${d.header ? `<span class="dechead">${esc(d.header)}</span>` : ""}
+          <span class="decq">${esc(d.question)}</span></div>
+        ${d.chosen ? `<div class="decc">✅ ${esc(d.chosen)}</div>` : ""}</div>`).join("")}</div>
+    </div>`);
+    if (files.length) {
+      const hot = [...files].sort((x, y) => y.touches - x.touches).slice(0, 5);
+      parts.push(`<div class="grid2">
+        <div class="pane" style="gap:10px">
+          <div class="sechead"><div class="seclab">산출물</div><div class="spacer"></div>
+            <div class="secmeta">생성 ${files.filter(f => f.kind === "new").length} · 수정 ${files.filter(f => f.kind === "mod").length}</div></div>
+          <div class="listbox">${files.slice(0, 8).map(f => `<div class="r" title="${esc(shortPath(f.path))}">
+            <span class="tag ${f.kind}">${f.kind === "new" ? "생성" : f.kind === "del" ? "삭제" : "수정"}</span>
+            <span class="skname">${esc(baseName(f.path))}</span></div>`).join("")}</div>
+        </div>
+        <div class="pane" style="gap:10px">
+          <div class="sechead"><div class="seclab">변경 핫스팟</div><div class="spacer"></div>
+            <div class="secmeta">많이 고친 파일</div></div>
+          <div class="listbox">${hot.map(f => `<div class="r" title="${esc(shortPath(f.path))} · ${f.touches}회 수정">
+            <span class="sktok">×${f.touches}</span><span class="skname">${esc(baseName(f.path))}</span>
+            <span class="sktok"><span style="color:var(--add)">+${f.add}</span> <span style="color:var(--del)">−${f.del}</span></span></div>`).join("")}</div>
+        </div>
+      </div>`);
     }
   }
-  return map;
+
+  wrap.innerHTML = parts.join("");
+  view.appendChild(wrap);
+  renderAiSummary();
 }
 
-// ── 탭2: 세션 요약 (v1: 데이터로 자동 정리, 토큰 0) ────────
-// 결과문자열 "...\"질문\"=\"선택답\"..." → {질문:선택답} 맵
-function parseChosen(resultStr) {
-  const map = {}; const re = /"([^"]+)"\s*=\s*"([^"]+)"/g; let m;
-  while ((m = re.exec(String(resultStr || "")))) map[m[1]] = m[2];
-  return map;
-}
-// AskUserQuestion → 의사결정 목록 (질문·선택·대안+설명)
-function decisions(events) {
-  const out = [];
-  for (const e of events) {
-    if (e.kind !== "tool_use" || e.name !== "AskUserQuestion") continue;
-    const chosen = parseChosen(e.result);
-    for (const q of (e.input?.questions || [])) {
-      const ch = chosen[q.question];
-      out.push({
-        header: q.header || "", question: q.question || "", chosen: ch || "(미응답)",
-        options: (q.options || []).map(o => ({ label: o.label, desc: o.description || "", picked: o.label === ch })),
-      });
-    }
-  }
-  return out;
-}
-// 세션 소요 시간(첫~끝 timestamp)
-function sessionDuration(events) {
-  const ts = events.map(e => e.ts).filter(Boolean).map(t => new Date(t).getTime()).filter(n => !isNaN(n));
-  if (ts.length < 2) return "—";
-  let s = (Math.max(...ts) - Math.min(...ts)) / 1000;
-  const d = Math.floor(s / 86400); s -= d * 86400;
-  const h = Math.floor(s / 3600); s -= h * 3600;
-  const m = Math.floor(s / 60);
-  return d ? `${d}일 ${h}시간` : h ? `${h}시간 ${m}분` : `${m}분`;
-}
-// git commit 명령에서 사람이 읽을 메시지(제목 한 줄) 추출
-function commitMsg(cmd) {
-  // 단순 -m "msg" / 'msg' (단, $(...) 같은 셸 치환은 제외)
-  let m = cmd.match(/-m\s+"([^"$]+)"/) || cmd.match(/-m\s+'([^']+)'/);
-  if (m) return m[1].split("\n")[0].trim();
-  // heredoc: <<'EOF' ... EOF  → 첫 비어있지 않은 줄
-  m = cmd.match(/<<\s*['"]?(\w+)['"]?\s*\n([\s\S]*?)\n\1/);
-  if (m) { const f = m[2].split("\n").map(s => s.trim()).filter(Boolean)[0]; if (f) return f; }
-  return "커밋";
-}
-function commits(events) {
-  const out = [];
-  for (const e of events) {
-    if (e.kind !== "tool_use" || e.name !== "Bash") continue;
-    const cmd = e.input?.command || "";
-    if (!/git commit/.test(cmd)) continue;
-    out.push(commitMsg(cmd));
-  }
-  return out;
-}
-
-// 최상단 "이 세션 한눈에" — 데이터로 자동 생성(토큰 0)
-function autoSummary(events) {
-  const files = changedFiles();
-  const decs = decisions(events);
-  const cms = commits(events);
-  const created = [...files].filter(([,v]) => v.kind === "new").length;
-  const mod = [...files].filter(([,v]) => v.kind === "mod").length;
-  const hot = [...files].filter(([,v]) => v.kind === "mod")
-    .sort((a,b) => b[1].edits.length - a[1].edits.length).slice(0,3).map(([f]) => base(f));
-  const decHeads = decs.slice(0,4).map(d => d.header || d.question.slice(0,18)).filter(Boolean);
-  const lines = [];
-  lines.push(`<b>${sessionDuration(events)}</b> 동안 파일 <b>${files.size}</b>개 작업 (생성 ${created} · 수정 ${mod}) · 의사결정 <b>${decs.length}</b>건${cms.length ? ` · 커밋 <b>${cms.length}</b>` : ""}`);
-  if (hot.length) lines.push(`주로 손본 곳: ${hot.map(esc).join(", ")}`);
-  if (decHeads.length) lines.push(`주요 결정: ${decHeads.map(esc).join(" · ")}`);
-  if (cms.length) lines.push(`대표 커밋: ${esc(cms[0])}`);
-  return lines.map(l => `<div>• ${l}</div>`).join("");
-}
-function decisionCard(d) {
-  const alts = d.options.filter(o => !o.picked);
-  return `<div class="decision">
-    <div class="dq">${d.header ? `<span class="dtag">${esc(d.header)}</span>` : ""}${esc(d.question)}</div>
-    <div class="dchosen">✅ ${esc(d.chosen)}</div>
-    ${alts.length ? `<details class="dalts"><summary>대안 ${alts.length}개</summary>${alts.map(o => `<div class="dalt"><b>${esc(o.label)}</b>${o.desc ? " — " + esc(o.desc) : ""}</div>`).join("")}</details>` : ""}
+function agentRow(x) {
+  const stat = x.running
+    ? `<span class="astat run"><i class="pulse"></i>진행</span>`
+    : `<span class="astat done">완료</span>`;
+  return `<div class="r">
+    <span class="abadge">${x.n}</span>
+    <span class="adesc" title="${esc(x.desc)}">${esc(x.desc)}</span>
+    ${x.model ? `<span class="amodel" style="color:var(--${famOf(x.model)})">${esc(shortModel(x.model))}</span>` : ""}
+    ${x.tools != null ? `<span class="atools">도구 ${x.tools}</span>` : ""}
+    ${stat}
+    <span class="atok">${x.tokens != null ? kfmt(x.tokens) : "—"}</span>
   </div>`;
 }
 
-function renderSummary() {
-  const files = changedFiles();
-  const decs = decisions(EVENTS);
-  const cms = commits(EVENTS);
-  const created = [...files].filter(([,v]) => v.kind === "new");
-  const hot = [...files].filter(([,v]) => v.kind === "mod").sort((a,b) => b[1].edits.length - a[1].edits.length);
-  const fails = EVENTS.filter(e => e.kind === "tool_use" && e.isError).length;
+/* AI 한 줄 결론 + 불릿 — 캐시가 있으면 즉시, 없으면 버튼 */
+// AI 요약 상태 — 탭을 오갈 때마다 재요청/재생성하지 않도록 세션 단위로 들고 있는다
+let aiCache = null;      // 서버에서 받은 요약(있으면 그대로 그린다)
+let aiAutoTried = false; // 자동 생성은 세션당 1회만 시도
+let aiBusy = false;
 
-  const edited = [...files].filter(([,v]) => v.kind === "mod");
+async function renderAiSummary() {
+  const box = $("aiSum");
+  if (!box) return;
 
-  view.innerHTML = `
-    <div class="topsum">
-      <div class="topsum-h">📋 이 세션 한눈에 <span class="hint">(자동 · 토큰 0)</span></div>
-      <div class="topsum-body">${autoSummary(EVENTS)}</div>
-      <div class="aibox" style="margin:12px 0 0">
-        <button class="aibtn" id="aiSum">✨ AI 서술형 요약으로 더 정교하게</button>
-        <div class="aiout" id="aiSumOut" style="display:none"></div>
-      </div>
-    </div>
-
-    <div class="stats">
-      <div class="stat"><div class="n">${sessionDuration(EVENTS)}</div><div class="k">소요 시간</div></div>
-      <div class="stat"><div class="n">${files.size}</div><div class="k">변경 파일</div></div>
-      <div class="stat"><div class="n">${decs.length}</div><div class="k">의사결정</div></div>
-      <div class="stat"><div class="n">${cms.length}</div><div class="k">커밋</div></div>
-      <div class="stat"><div class="n">${fails}</div><div class="k">코스 수정</div></div>
-    </div>
-
-    <details class="fold" open>
-      <summary>⚖️ 의사결정 ${decs.length}건</summary>
-      <div class="foldbody">
-        ${decs.length ? decs.map(decisionCard).join("") : '<p class="hint">기록된 결정(AskUserQuestion)이 없습니다.</p>'}
-      </div>
-    </details>
-
-    <div class="cols">
-      <div>
-        <h3 class="sec">📦 산출물</h3>
-        <div class="hint" style="margin:0 0 6px">파일 생성 ${created.length} · 수정 ${edited.length}${cms.length ? ` · 커밋 ${cms.length}` : ""}</div>
-        <ul class="files">
-          ${cms.slice(0,8).map(m => `<li>✅ <span style="color:var(--ink)">${esc(m)}</span></li>`).join("")}
-          ${created.slice(0,12).map(([f]) => `<li><span class="tag new">생성</span> ${esc(base(f))}</li>`).join("")}
-          ${(!cms.length && !created.length) ? "<li>(파일 변경 없음)</li>" : ""}
-        </ul>
-      </div>
-      <div>
-        <h3 class="sec">🔥 변경 핫스팟 <span class="hint">(많이 고친 파일)</span></h3>
-        <ul class="files">
-          ${hot.slice(0,8).map(([f,v]) => `<li><b>×${v.edits.length}</b> &nbsp;${esc(base(f))}</li>`).join("") || "<li>(없음)</li>"}
-        </ul>
-      </div>
-    </div>
-  `;
-  document.getElementById("aiSum").onclick = (ev) => callAI("summary", ev.target, document.getElementById("aiSumOut"));
-  loadCachedAI("summary", document.getElementById("aiSumOut"), document.getElementById("aiSum"), false);
-}
-
-// ── 탭3: 아키텍처/구조 ───────────────────────────────────
-function renderDiagram() {
-  const files = changedFiles();
-  view.innerHTML = `
-    <div class="aibox">
-      <button class="aibtn" id="aiDia">✨ AI 아키텍처 다이어그램 생성 (claude -p)</button>
-      <div class="hint">아래는 변경 파일을 기계적으로 그린 "변경 지도"입니다. 진짜 구조도는 위 버튼으로 AI가 생성합니다.</div>
-      <div id="aiDiaOut" style="display:none"></div>
-    </div>
-    <h3 class="sec">🗺️ 변경 파일 맵 (기계적)</h3>
-    <div class="mermaid" id="mechMap"></div>
-  `;
-  const groups = {};
-  for (const [f, v] of files) (groups[topDir(f)] ??= []).push([f, v]);
-  let def = "flowchart LR\n";
-  let nid = 0; const ids = {};
-  for (const [dir, arr] of Object.entries(groups)) {
-    def += `  subgraph ${JSON.stringify(dir)}\n`;
-    for (const [f, v] of arr) {
-      const id = "n" + (nid++); ids[f] = id;
-      def += `    ${id}["${base(f).replace(/"/g,"")}"]\n`;
-    }
-    def += "  end\n";
-  }
-  for (const [f, v] of files) def += `  style ${ids[f]} fill:${v.kind==="new"?"#1f3a2a":"#1f2f4a"},stroke:#666,color:#e7e7ec\n`;
-  renderMermaid(document.getElementById("mechMap"), files.size ? def : "flowchart LR\n  x[변경 없음]");
-  document.getElementById("aiDia").onclick = (ev) => callAI("diagram", ev.target, document.getElementById("aiDiaOut"), true);
-  loadCachedAI("diagram", document.getElementById("aiDiaOut"), document.getElementById("aiDia"), true);
-}
-
-async function renderMermaid(el, def) {
-  try {
-    const { svg } = await mermaid.render("m" + (mermaidSeq++), def);
-    el.innerHTML = svg;
-  } catch (e) {
-    el.innerHTML = `<div class="hint">다이어그램 렌더 실패. 원본:</div><pre class="code">${esc(def)}</pre>`;
-  }
-}
-
-// ── 탭4: 코드 변경 (diff) ────────────────────────────────
-function renderDiff() {
-  const files = changedFiles();
-  if (!files.size) { view.innerHTML = `<p class="hint">코드 변경이 없습니다.</p>`; return; }
-  const frag = document.createDocumentFragment();
-  for (const [f, v] of files) {
-    const card = document.createElement("div");
-    card.className = "tool";
-    let body;
-    if (v.kind === "new") {
-      body = clampWrap(codeBlock(String(v.content).slice(0,6000), langFromPath(f)));
+  const paint = (data) => {
+    aiCache = data;
+    const stale = data.atEventCount != null && data.atEventCount < EVENTS.length;
+    const o = typeof data.text === "string" ? parseSummaryJson(data.text) : data.text;
+    const foot = (EXPORT || !stale) ? "" :
+      `<div class="secmeta">이 요약은 이후 ${EVENTS.length - data.atEventCount}건의 활동을 반영하지 않았습니다
+        <span class="lnk" id="aiRegen" style="color:var(--accent);cursor:pointer">⟳ 다시 생성</span></div>`;
+    if (o && o.headline) {
+      box.innerHTML = `<div class="pane" style="gap:22px">
+        <div class="headline">${esc(o.headline)}</div>
+        <div class="bullets">${(o.bullets || []).slice(0, 3).map(b =>
+          `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>${foot}</div>`;
     } else {
-      body = clampWrap(v.edits.map(i => editDiff(i)).join('<div style="height:6px"></div>'));
+      box.innerHTML = `<div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>
+        <div class="abody">${md(String(data.text || ""))}</div>${foot}</div>`;
     }
-    card.innerHTML = `<div class="head"><span>${v.kind==="new"?"📄":"📝"}</span><span class="name">${v.kind==="new"?"생성":"수정"}</span><span class="path">${esc(fileName(f))}</span><span class="badge" style="margin-left:auto">${v.kind==="new"?"new":v.edits.length+"회"}</span></div>${body}`;
-    frag.appendChild(card);
-  }
-  view.replaceChildren(frag);
-}
+    const rg = $("aiRegen");
+    if (rg) rg.onclick = () => generate(rg);
+  };
 
-// ── AI 호출 (claude -p) ──────────────────────────────────
-const fmtK = (n) => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
-function usageLine(u) {
-  if (!u) return "";
-  const cost = u.cost != null ? `$${u.cost.toFixed(4)}` : "—";
-  const sec = u.durationMs != null ? `${(u.durationMs/1000).toFixed(1)}s` : "";
-  return `입력 <b>${fmtK(u.input)}</b> · 출력 <b>${fmtK(u.output)}</b> · 비용 <b>${cost}</b>${sec ? " · " + sec : ""}`;
-}
-function usageEl(out) {
-  let el = out.nextElementSibling;
-  if (!el || !el.classList.contains("usage")) {
-    el = document.createElement("div"); el.className = "usage";
-    out.after(el);
-  }
-  return el;
-}
+  // 토큰 0 자동 요약 — AI 결과가 없거나 만드는 중일 때 보여준다
+  const autoPane = (tail) => `<div class="pane" style="gap:14px">
+      <div class="headline">${esc(autoHeadline())}</div>
+      <div class="bullets">${autoBullets().map(b => `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
+      ${tail}</div>`;
 
-async function callAI(kind, btn, out, isDiagram) {
-  btn.disabled = true; const label = btn.textContent; btn.textContent = "생성 중… (수십 초)";
-  out.style.display = "block"; out.className = isDiagram ? "" : "aiout"; out.textContent = "⏳ Claude가 생성 중입니다…";
-  const usage = usageEl(out); usage.textContent = "";
+  const generate = async (btn) => {
+    if (aiBusy) return;
+    aiBusy = true;
+    const label = btn ? btn.textContent : "";
+    if (btn) { btn.textContent = "요약 생성 중…"; btn.disabled = true; }
+    try {
+      const r = await fetch(`/api/ai/summary/${SESSION}`);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      aiBusy = false;      // paint 보다 먼저 내려야 한다 — 도중에 재렌더가 끼면 '만드는 중'으로 덮인다
+      paint(d);
+    } catch (e) {
+      if (btn) { btn.textContent = "실패: " + e.message; btn.disabled = false; }
+    } finally { aiBusy = false; }
+  };
+
+  const manual = () => {
+    box.innerHTML = autoPane(EXPORT ? "" : `<button class="aibtn" id="aiBtn">✨ AI 서술형 요약으로 더 정교하게</button>`);
+    const b = $("aiBtn");
+    if (b) b.onclick = () => generate(b);
+  };
+
+  if (EXPORT) { const c = EXPORT.cache && EXPORT.cache.summary; return c ? paint(c) : manual(); }
+  if (aiCache) return paint(aiCache);          // 이미 받아둔 게 있으면 재요청하지 않는다
+  // 생성 중에 탭이 다시 그려져도(=SSE init/patch) 진행 문구를 유지한다.
+  // 이걸 안 하면 나중에 그려진 쪽이 버튼 화면으로 덮어써 생성이 취소된 것처럼 보인다.
+  if (aiBusy) return void (box.innerHTML = autoPane(`<div class="secmeta">✨ AI 요약을 만드는 중…</div>`));
+
+  let cached = null;
   try {
-    const r = await fetch(`/api/ai/${kind}/${SESSION}`);
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    if (isDiagram) {
-      out.className = "mermaid";
-      const def = data.text.replace(/^```mermaid\s*/i,"").replace(/```$/,"").trim();
-      renderMermaid(out, def);
-    } else {
-      out.className = "aiout md"; out.innerHTML = md(data.text); highlightCode();
-    }
-    usage.innerHTML = usageLine(data.usage);
-  } catch (e) {
-    out.className = "aiout"; out.textContent = "❌ 실패: " + e.message;
-  } finally {
-    btn.disabled = false; btn.textContent = label;
-  }
-}
-
-// 탭 열 때 캐시된 AI 결과를 즉시 표시 (생성 X, 토큰 0). stale면 재생성 힌트.
-async function loadCachedAI(kind, out, btn, isDiagram) {
-  try {
-    let data;
-    if (EXPORT) { data = EXPORT.cache && EXPORT.cache[kind]; btn.style.display = "none"; }
-    else { const r = await fetch(`/api/ai-cache/${kind}/${SESSION}`); data = await r.json(); }
-    if (!data || data.cached === false || !data.text) return;
-    out.style.display = "block";
-    if (isDiagram) {
-      out.className = "mermaid";
-      const def = data.text.replace(/^```mermaid\s*/i, "").replace(/```$/, "").trim();
-      renderMermaid(out, def);
-    } else {
-      out.className = "aiout md"; out.innerHTML = md(data.text); highlightCode();
-    }
-    const usage = usageEl(out); usage.innerHTML = usageLine(data.usage);
-    btn.textContent = isDiagram ? "↻ AI 다이어그램 재생성" : "↻ AI 요약 재생성";
-    if (data.atEventCount != null && data.atEventCount < EVENTS.length) {
-      const hint = document.createElement("div"); hint.className = "hint"; hint.style.color = "#d29922";
-      hint.textContent = `⚠ 캐시 생성 이후 작업이 더 진행됐어요 (이벤트 ${data.atEventCount} → ${EVENTS.length}). ↻ 재생성하면 최신 반영.`;
-      usage.after(hint);
-    }
+    const r = await fetch(`/api/ai-cache/summary/${SESSION}`);
+    const d = await r.json();
+    if (d && d.text) cached = d;
   } catch {}
-}
+  if (aiCache) return paint(aiCache);          // 기다리는 사이 다른 호출이 받아왔을 수 있다
+  if (cached) return paint(cached);
 
-// ── 상단 토큰바: 이 세션 토큰(안 리셋) + 계정 한도%(리셋) 명확히 분리 ──
-function updateUsageBar(u) {
-  if (!u) return;
-  let html = `이 세션 <b>${fmtTok(u.total)}</b>`;
-  if (u.rate) {
-    const r = [];
-    if (u.rate.fiveHour != null) r.push(`5h <b>${u.rate.fiveHour}%</b>`);
-    if (u.rate.sevenDay != null) r.push(`주간 <b>${u.rate.sevenDay}%</b>`);
-    if (r.length) html += ` <span class="acct">· 계정 ${r.join(" · ")}</span>`;
+  // 캐시가 없다 → 세션이 끝났으면 한 번 자동 생성한다.
+  //   진행 중(5분 내 활동)인 세션은 내용이 계속 바뀌므로 자동 생성하지 않는다(결과가 금방 낡는다).
+  if (!aiAutoTried && !isLive()) {
+    aiAutoTried = true;
+    box.innerHTML = autoPane(`<div class="secmeta">✨ 세션이 끝나 AI 요약을 자동으로 만드는 중…</div>`);
+    await generate(null);
+    if (!aiCache) manual();
+    return;
   }
-  usagebar.innerHTML = html;
-  const cost = u.cost != null ? `~$${u.cost.toFixed(2)}` : "—";
-  usagebar.title = `이 세션 토큰 ${u.total.toLocaleString()} (이 대화 누적, 리셋 안 됨) · API 환산 ${cost} (구독제면 실제 청구 아님)`
-    + (u.rate ? "\n계정 5h·주간 = 전체 한도 소진율(세션별 아님, 창마다 리셋)" : "");
+  manual();
+}
+const stripFence = (s) => String(s || "").replace(/^\s*```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+// 모델이 JSON 앞뒤에 인사말을 붙이는 경우가 있다("완료했습니다.\n{...}").
+// 코드펜스를 벗기고 첫 { 부터 마지막 } 까지를 잘라 파싱한다.
+function parseSummaryJson(text) {
+  const t = stripFence(text);
+  try { return JSON.parse(t); } catch {}
+  const i = t.indexOf("{"), j = t.lastIndexOf("}");
+  if (i >= 0 && j > i) { try { return JSON.parse(t.slice(i, j + 1)); } catch {} }
+  return null;
+}
+const inlineCode = (s) => esc(s).replace(/`([^`]+)`/g, '<span class="icode">$1</span>');
+// AI 요약이 아직 없을 때 쓰는 자동 헤드라인(토큰 0).
+//  주제는 sessionTitle() — 별칭 > Claude Code가 붙인 ai-title > 첫 질문 순.
+//  예전엔 첫 사용자 메시지를 그대로 썼는데, 명령문("~ 좀 알려줘")이 제목이 되어 어색했다.
+function autoHeadline() {
+  const a = AGG || {};
+  const topic = String(sessionTitle() || "세션")
+    .replace(/\s*[?？!！.]+$/, "")            // 끝의 물음표·마침표는 뗀다
+    .replace(/\s*(좀\s*)?(알려줘|해줘|해줄래|부탁해|보여줘)$/, "")  // 명령형 꼬리 제거
+    .trim().slice(0, 52);
+  const bits = [];
+  const f = (a.files || []).length, d = (a.decisions || []).length, ag = (a.agents || []).length;
+  if (f) bits.push(`파일 ${f}개`);
+  if (d) bits.push(`의사결정 ${d}건`);
+  if (ag) bits.push(`서브에이전트 ${ag}개`);
+  if (a.stats && a.stats.commits) bits.push(`커밋 ${a.stats.commits}건`);
+  return bits.length ? `${topic} — ${bits.join(" · ")}` : topic;
+}
+function autoBullets() {
+  const a = AGG || {}, out = [];
+  const st = a.stats || {};
+  const hot = [...(a.files || [])].sort((x, y) => y.touches - x.touches)[0];
+  out.push(`${a.turns || 0}번 주고받으며 도구를 ${(a.tools && a.tools.total) || 0}회 호출했습니다.`);
+  if (hot) out.push(`가장 많이 손본 곳은 \`${baseName(hot.path)}\` (${hot.touches}회).`);
+  if ((a.agents || []).length) out.push(`서브에이전트 ${a.agents.length}개가 작업을 나눠 맡았습니다.`);
+  else if (st.commits) out.push(`커밋 ${st.commits}건을 만들었습니다.`);
+  return out.slice(0, 3);
 }
 
-// ── 초기화 / SSE ─────────────────────────────────────────
-try { mermaid.initialize({ startOnLoad:false, theme:"dark" }); } catch {}
-try { if (window.hljs) hljs.configure({ ignoreUnescapedHTML:true }); } catch {}
-document.getElementById("fabTop").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
-document.getElementById("fabBottom").onclick = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-const exportBtn = document.getElementById("exportBtn");
-if (EXPORT) { exportBtn.style.display = "none"; document.getElementById("listLink").style.display = "none"; }
-else exportBtn.onclick = async () => {
-  const lbl = exportBtn.querySelector(".lbl"); exportBtn.disabled = true; const t = lbl.textContent; lbl.textContent = "내보내는 중…";
+/* ── 구조 탭 ──────────────────────────────────────────── */
+function renderArch() {
+  const files = (AGG && AGG.files) || [];
+  const wrap = document.createElement("div");
+  wrap.className = "pane";
+  wrap.style.cssText = "gap:16px;width:100%;max-width:var(--content-max)";
+
+  // 경로 → 디렉터리 그룹
+  const groups = new Map();
+  for (const f of files) {
+    const parts = shortPath(f.path).split("/");
+    const name = parts.pop();
+    const d = parts.join("/") + "/";
+    if (!groups.has(d)) groups.set(d, []);
+    groups.get(d).push({ ...f, name });
+  }
+  const maxTouch = files.reduce((m, f) => Math.max(m, f.touches), 0);
+  const rows = [...groups].map(([d, fs]) => {
+    const head = `<div class="d">${esc(d)}</div>`;
+    const body = fs.map(f => {
+      const hot = f.touches === maxTouch && maxTouch > 1;
+      const tag = f.kind === "new" ? `<span class="pill new">new</span>`
+        : f.kind === "del" ? `<span class="pill del">del</span>` : `<span class="pill mod">mod</span>`;
+      return `<div class="f${hot ? " hot" : ""}">${esc(f.name)} ${tag}
+        ${f.add ? `<span class="add">+${f.add}</span>` : ""} ${f.del ? `<span class="del">−${f.del}</span>` : ""}</div>`;
+    }).join("");
+    return head + body;
+  }).join("");
+
+  wrap.innerHTML = `<div class="sechead"><div class="seclab">이 세션이 건드린 구조</div><div class="spacer"></div>
+      <div class="secmeta">다이어그램 뷰 준비 중</div></div>
+    ${files.length ? `<div class="tree">${rows}</div>` : `<div class="secmeta">변경된 파일이 없습니다</div>`}
+    <div class="divider"></div>
+    <div class="sechead"><div class="seclab">AI 아키텍처 다이어그램</div></div>
+    <div id="diaWrap"></div>`;
+  view.appendChild(wrap);
+  renderDiagram();
+}
+
+let mermaidSeq = 0;
+async function renderDiagram() {
+  const box = $("diaWrap");
+  if (!box) return;
+  const paint = async (text) => {
+    box.innerHTML = `<div class="mermaid" id="mm${++mermaidSeq}"></div>`;
+    const el = box.firstChild;
+    try {
+      const { svg } = await mermaid.render("mmr" + mermaidSeq, stripFence(text).trim());
+      el.innerHTML = svg;
+    } catch (e) { el.innerHTML = `<div class="secmeta">다이어그램을 그리지 못했습니다: ${esc(e.message)}</div>`; }
+  };
+  const btn = () => {
+    box.innerHTML = `<button class="aibtn" id="diaBtn">✨ 아키텍처 다이어그램 생성 (claude -p)</button>`;
+    $("diaBtn").onclick = async () => {
+      const b = $("diaBtn"); b.textContent = "생성 중…"; b.disabled = true;
+      try {
+        const r = await fetch(`/api/ai/diagram/${SESSION}`);
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        await paint(d.text);
+      } catch (e) { b.textContent = "실패: " + e.message; b.disabled = false; }
+    };
+  };
+  if (EXPORT) {
+    const c = EXPORT.cache && EXPORT.cache.diagram;
+    return c ? paint(c.text) : (box.innerHTML = `<div class="secmeta">내보낼 때 생성된 다이어그램이 없습니다</div>`);
+  }
   try {
-    const r = await fetch(`/export/${SESSION}`); const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    stat.textContent = `저장됨: ${d.file}`;
-    alert(`내보냈습니다:\n${d.path}`);
-  } catch (e) { alert("내보내기 실패: " + e.message); }
-  finally { exportBtn.disabled = false; lbl.textContent = t; }
-};
-renderTabs(); draw();
-if (EXPORT) {
-  stat.textContent = "내보낸 스냅샷";
-  updateUsageBar(EXPORT.usage);
-  renderSessionName();
-} else {
-  const es = new EventSource(`/events/${SESSION}`);
-  es.addEventListener("snapshot", (m) => {
-    EVENTS = JSON.parse(m.data);
-    dot.classList.add("live"); stat.textContent = "실시간 연결됨";
-    draw(); renderSessionName();
+    const r = await fetch(`/api/ai-cache/diagram/${SESSION}`);
+    const d = await r.json();
+    if (d && d.text) await paint(d.text); else btn();
+  } catch { btn(); }
+}
+
+/* ── 변경 탭 ──────────────────────────────────────────── */
+function renderChanges() {
+  const files = (AGG && AGG.files) || [];
+  const wrap = document.createElement("div");
+  wrap.className = "chg";
+  const n = (k) => files.filter(f => f.kind === k).length;
+  wrap.innerHTML = `<div class="chips">
+      ${n("new") ? `<span class="chip new">추가 ${n("new")}</span>` : ""}
+      ${n("mod") ? `<span class="chip mod">수정 ${n("mod")}</span>` : ""}
+      ${n("del") ? `<span class="chip del">삭제 ${n("del")}</span>` : ""}
+      <div class="spacer"></div>
+      <button class="ghostbtn" id="collapseAll">모두 접기</button>
+      <button class="ghostbtn" id="expandAll">모두 펼치기</button>
+    </div>
+    <div id="fileList"></div>`;
+  view.appendChild(wrap);
+
+  const list = $("fileList");
+  list.className = "pane";
+  list.style.gap = "12px";
+  if (!files.length) { list.innerHTML = `<div class="secmeta">이 세션에서 바뀐 파일이 없습니다</div>`; return; }
+
+  files.forEach((f, i) => {
+    if (fileOpen[f.path] === undefined) fileOpen[f.path] = i === 0; // 기본: 첫 파일만 펼침
+    const el = document.createElement("div");
+    el.className = "fblock";
+    el.innerHTML = fileBlock(f);
+    list.appendChild(el);
+    el.querySelector(".fhead").onclick = (ev) => {
+      if (ev.target.classList.contains("copybtn")) return;
+      fileOpen[f.path] = !fileOpen[f.path];
+      el.innerHTML = fileBlock(f);
+      bindFile(el, f);
+      applySearch();
+    };
+    bindFile(el, f);
   });
-  es.addEventListener("usage", (m) => { try { updateUsageBar(JSON.parse(m.data)); } catch {} });
-  es.onerror = () => { dot.classList.remove("live"); stat.textContent = "재연결 중…"; };
+  $("collapseAll").onclick = () => { files.forEach(f => fileOpen[f.path] = false); draw(); };
+  $("expandAll").onclick = () => { files.forEach(f => fileOpen[f.path] = true); draw(); };
+}
+function bindFile(el, f) {
+  const head = el.querySelector(".fhead");
+  head.onclick = (ev) => {
+    if (ev.target.classList.contains("copybtn")) return;
+    fileOpen[f.path] = !fileOpen[f.path];
+    el.innerHTML = fileBlock(f);
+    bindFile(el, f);
+    applySearch();
+  };
+  const cp = el.querySelector(".copybtn");
+  if (cp) cp.onclick = (ev) => {
+    ev.stopPropagation();
+    const txt = f.hunks.map(h => h.sign + " " + h.text).join("\n");
+    navigator.clipboard?.writeText(txt).then(() => { cp.textContent = "복사됨"; setTimeout(() => cp.textContent = "복사", 1200); });
+  };
+}
+function fileBlock(f) {
+  const open = fileOpen[f.path];
+  const label = f.kind === "new" ? "추가" : f.kind === "del" ? "삭제" : "수정";
+  const body = open && f.hunks.length ? `<div class="fbody">${f.hunks.map(h =>
+      `<div class="l ${h.sign === "+" ? "a" : h.sign === "-" ? "d" : "c"}">${esc(h.sign + " " + h.text)}</div>`).join("")}
+      ${f.clipped ? `<div class="clipnote">…이 파일은 변경이 많아 앞부분만 표시합니다</div>` : ""}</div>` : "";
+  return `<button class="fhead">
+      <span class="chev">${open ? "▾" : "▸"}</span>
+      <span class="tag ${f.kind}">${label}</span>
+      <span class="p${f.kind === "del" ? " gone" : ""}">${esc(shortPath(f.path))}</span>
+      <span class="n">${f.add ? `<span style="color:var(--add)">+${f.add}</span> ` : ""}${f.del ? `<span style="color:var(--del)">−${f.del}</span>` : ""}</span>
+      ${f.hunks.length ? `<span class="copybtn">복사</span>` : ""}
+    </button>${body}`;
+}
+
+/* ── 대화 탭 ──────────────────────────────────────────── */
+// 이벤트를 화면 단위(unit)로 묶는다. 연속 도구 호출 = 한 그룹.
+function buildBaseUnits(events) {
+  const units = [];
+  let i = 0;
+  while (i < events.length) {
+    const e = events[i];
+    if (e.kind === "tool_use" && !/^(Task|Agent|AskUserQuestion)$/.test(e.name)) {
+      const start = i;
+      while (i < events.length && events[i].kind === "tool_use"
+             && !/^(Task|Agent|AskUserQuestion)$/.test(events[i].name)) i++;
+      units.push({ type: "tools", start, end: i - 1 });
+      continue;
+    }
+    if (e.kind === "tool_use" && /^(Task|Agent)$/.test(e.name)) {
+      const start = i;
+      while (i < events.length && events[i].kind === "tool_use" && /^(Task|Agent)$/.test(events[i].name)) i++;
+      units.push({ type: "agents", start, end: i - 1 });
+      continue;
+    }
+    units.push({ type: e.kind, start: i, end: i });
+    i++;
+  }
+  return units;
+}
+
+// 사용자가 한 번 말하면 Claude는 여러 번 답한다(설명 → 도구 → 설명 → 도구…).
+// 그 연속 구간을 '턴' 하나로 묶어 헤더(아이콘·모델·시각)를 한 번만 그린다.
+// 예전엔 응답마다 헤더가 반복돼 화면이 잘게 끊겨 읽기 어려웠다.
+const CLAUDE_SIDE = new Set(["assistant_text", "thinking", "tools", "agents"]);
+function buildUnits(events) {
+  const base = buildBaseUnits(events);
+  const out = [];
+  let turn = null;
+  const flush = () => { if (turn) { out.push(turn); turn = null; } };
+  for (const u of base) {
+    const isAsk = u.type === "tool_use" && events[u.start].name === "AskUserQuestion";
+    if (CLAUDE_SIDE.has(u.type) || isAsk) {
+      if (!turn) turn = { type: "turn", start: u.start, end: u.end, parts: [] };
+      turn.parts.push(u);
+      turn.end = u.end;
+    } else {
+      flush();
+      out.push(u);
+    }
+  }
+  flush();
+  return out;
+}
+
+let chatEl = null;
+function renderChat() {
+  chatEl = document.createElement("div");
+  chatEl.className = "chat";
+  view.appendChild(chatEl);
+  paintChatFrom(0);
+}
+function paintChatFrom(fromIdx) {
+  if (!chatEl) return;
+  const units = buildUnits(EVENTS);
+  let ui = units.findIndex(u => u.end >= fromIdx);
+  if (ui < 0) ui = units.length;
+  // 다시 그릴 구간의 DOM만 제거
+  [...chatEl.children].forEach(ch => {
+    if (Number(ch.dataset.start) >= (units[ui] ? units[ui].start : Infinity)) ch.remove();
+  });
+  let lastModel = null;
+  for (let k = 0; k < ui; k++) {
+    const u = units[k];
+    for (let j = u.start; j <= u.end; j++) if (EVENTS[j].model && EVENTS[j].model !== "<synthetic>") lastModel = EVENTS[j].model;
+  }
+  for (let k = ui; k < units.length; k++) {
+    const u = units[k];
+    const node = renderUnit(u, lastModel);
+    for (let j = u.start; j <= u.end; j++) if (EVENTS[j].model && EVENTS[j].model !== "<synthetic>") lastModel = EVENTS[j].model;
+    if (node) { node.dataset.start = u.start; chatEl.appendChild(node); }
+  }
+  highlightCode();
+}
+function renderUnit(u, prevModel) {
+  const e = EVENTS[u.start];
+  const box = document.createElement("div");
+  box.className = "unit";
+
+  if (u.type === "turn") return renderTurn(u, prevModel, box);
+  if (u.type === "tools") return toolGroup(u, box);
+  if (u.type === "agents") return agentBlock(u, box);
+
+  switch (e.kind) {
+    case "user_text": {
+      box.className = "umsg";
+      box.innerHTML = `<div class="meta">
+          <span class="anchor lnk" data-anchor="${e.m}">#m${e.m} · 링크</span>
+          <span class="time">${esc(fmtClock(e.ts))}</span><span class="who">나</span></div>
+        <div class="ubub" id="ub${u.start}">${inlineCode(e.text)}${e.imageNames ? `<div class="secmeta">🖼 ${esc(e.imageNames.join(", "))}</div>` : ""}</div>`;
+      box.id = "m" + e.m;
+      box.querySelector(".anchor").onclick = () => copyAnchor(e.m);
+      requestAnimationFrame(() => clampBubble($("ub" + u.start)));
+      return box;
+    }
+    case "skill_note":
+    case "system_note": {
+      const isSkill = e.kind === "skill_note";
+      const name = isSkill ? (e.text.match(/skills\/([^/\s]+)/) || [])[1] || "" : "";
+      const label = isSkill
+        ? `skill: ${name} 주입 · ${(Math.round(e.text.length / 3.6)).toLocaleString()} tok — 사용자가 입력한 내용이 아닙니다`
+        : e.text.replace(/\s+/g, " ").slice(0, 160);
+      const key = "sys@" + u.start;
+      box.className = "pane";
+      box.style.gap = "8px";
+      box.innerHTML = `<div class="sysnote"><span class="k">SYS</span><span class="t">${esc(label)}</span>
+          <span class="x">${openState[key] ? "접기" : "펼치기"}</span></div>
+        ${openState[key] ? `<div class="sysbody">${esc(e.text)}</div>` : ""}`;
+      box.querySelector(".x").onclick = () => { openState[key] = !openState[key]; paintChatFrom(u.start); };
+      return box;
+    }
+    case "assistant_text": {
+      const sw = (prevModel && e.model && e.model !== "<synthetic>" && e.model !== prevModel)
+        ? switchMark(prevModel, e.model, e.ts) : "";
+      const tok = e.usage ? `#m${e.m} · ${kfmt((e.usage.in || 0) + (e.usage.out || 0) + (e.usage.cw || 0) + (e.usage.cr || 0))} tok` : `#m${e.m}`;
+      box.className = "amsg";
+      box.innerHTML = `${sw}<div class="meta">${CLAUDE_ICON}<span class="aname">claude</span>
+          ${modelChip(e.model)}<span class="time">${esc(fmtClock(e.ts))}</span>
+          <span class="tok lnk" data-anchor="${e.m}">${tok}</span></div>
+        <div class="abody">${md(e.text)}</div>`;
+      box.querySelector(".tok").onclick = () => copyAnchor(e.m);
+      box.id = "m" + e.m;
+      return box;
+    }
+    case "thinking": {
+      const key = "th@" + u.start;
+      box.innerHTML = `<div class="think"><span class="t">💭 생각 ${openState[key] ? "접기" : "펼치기"}</span>
+        ${openState[key] ? `<div style="margin-top:7px;white-space:pre-wrap">${esc(e.text)}</div>` : ""}</div>`;
+      box.querySelector(".t").onclick = () => { openState[key] = !openState[key]; paintChatFrom(u.start); };
+      return box;
+    }
+    case "tool_use":
+      if (e.name === "AskUserQuestion") return askBlock(e, box);
+      return toolGroup({ type: "tools", start: u.start, end: u.start }, box);
+    default:
+      return null;
+  }
+}
+// 한 턴 = 헤더 1개 + 그 아래 설명·도구·에이전트가 순서대로 흐른다.
+function renderTurn(u, prevModel, box) {
+  box.className = "turn";
+  const first = EVENTS[u.start];
+  // 턴 전체 토큰 합 + 대표 모델(첫 응답 기준)
+  let tok = 0, model = "";
+  for (let i = u.start; i <= u.end; i++) {
+    const ev = EVENTS[i];
+    if (ev.usage) tok += (ev.usage.in || 0) + (ev.usage.out || 0) + (ev.usage.cw || 0) + (ev.usage.cr || 0);
+    if (!model && ev.model && ev.model !== "<synthetic>") model = ev.model;
+  }
+  const last = EVENTS[u.end];
+  const span = (first.ts && last.ts && fmtClock(first.ts) !== fmtClock(last.ts))
+    ? `${fmtClock(first.ts)}–${fmtClock(last.ts)}` : fmtClock(first.ts);
+
+  const head = document.createElement("div");
+  head.className = "meta turnhead";
+  head.innerHTML = `${CLAUDE_ICON}<span class="aname">claude</span>${modelChip(model)}
+    <span class="time">${esc(span)}</span>
+    <span class="tok lnk" data-anchor="${first.m}">#m${first.m} · ${kfmt(tok)} tok</span>`;
+  head.querySelector(".tok").onclick = () => copyAnchor(first.m);
+  box.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "turnbody";
+  box.appendChild(body);
+
+  let cur = model;
+  for (const part of u.parts) {
+    const pe = EVENTS[part.start];
+    // 턴 중간에 모델이 바뀌면 그 자리에 전환 마커
+    if (part.type === "assistant_text" && pe.model && pe.model !== "<synthetic>" && cur && pe.model !== cur) {
+      const w = document.createElement("div");
+      w.innerHTML = switchMark(cur, pe.model, pe.ts);
+      body.appendChild(w.firstElementChild);
+      cur = pe.model;
+    }
+    let node = null;
+    if (part.type === "tools") node = toolGroup(part, document.createElement("div"));
+    else if (part.type === "agents") node = agentBlock(part, document.createElement("div"));
+    else if (part.type === "assistant_text") {
+      node = document.createElement("div");
+      node.className = "abody";
+      node.id = "m" + pe.m;
+      node.innerHTML = md(pe.text);
+    } else if (part.type === "thinking") {
+      const key = "th@" + part.start;
+      node = document.createElement("div");
+      node.innerHTML = `<div class="think"><span class="t">💭 생각 ${openState[key] ? "접기" : "펼치기"}</span>
+        ${openState[key] ? `<div style="margin-top:7px;white-space:pre-wrap">${esc(pe.text)}</div>` : ""}</div>`;
+      node.querySelector(".t").onclick = () => { openState[key] = !openState[key]; paintChatFrom(u.start); };
+    } else if (part.type === "tool_use" && pe.name === "AskUserQuestion") {
+      node = askBlock(pe, document.createElement("div"));
+    }
+    if (node) body.appendChild(node);
+  }
+  return box;
+}
+
+function switchMark(from, to, ts) {
+  return `<div class="switchmark"><div class="ln"></div><div class="c">
+    <span class="mm" style="color:var(--${famOf(from)})">${esc(shortModel(from))}</span>
+    <span class="ar">→</span>
+    <span class="mm" style="color:var(--${famOf(to)})">${esc(shortModel(to))}</span>
+    <span class="lb">모델 전환 · ${esc(fmtClock(ts))}</span></div><div class="ln"></div></div>`;
+}
+
+// 도구 그룹 — 접힌 상태에서도 '무엇을 했는지'가 보여야 한다
+function toolGroup(u, box) {
+  const items = EVENTS.slice(u.start, u.end + 1);
+  const key = "tg@" + u.start;
+  const open = !!openState[key];
+  const fails = items.filter(x => x.isError).length;
+  const durMs = (items[0].ts && items[items.length - 1].ts)
+    ? (new Date(items[items.length - 1].ts) - new Date(items[0].ts)) : 0;
+  box.className = "tgroup";
+  box.innerHTML = `<button class="thead">
+      <span class="chev">${open ? "▾" : "▸"}</span>
+      <span class="cnt">도구 ${items.length}</span>
+      <span class="sum">${toolSummary(items)}</span>
+      <span class="badge${fails ? " err" : ""}">${fails ? `실패 ${fails}` : "모두 완료"}</span>
+      ${durMs > 0 ? `<span class="dur">${dur(durMs)}</span>` : ""}
+    </button>
+    ${open ? `<div class="tbody">${items.map((x, i) => toolItem(x, u.start + i)).join("")}</div>` : ""}`;
+  box.querySelector(".thead").onclick = () => { openState[key] = !open; paintChatFrom(u.start); };
+  if (open) box.querySelectorAll(".titem").forEach(el => {
+    el.onclick = () => { const k = "ti@" + el.dataset.i; openState[k] = !openState[k]; paintChatFrom(u.start); };
+  });
+  return box;
+}
+const TOOLCOLOR = { Read: "var(--sonnet)", Edit: "var(--accent)", Write: "var(--accent)", Bash: "var(--sess)",
+                    Grep: "var(--muted)", Glob: "var(--muted)" };
+function toolSummary(items) {
+  const parts = [];
+  const seen = new Map();
+  for (const x of items) {
+    const arg = toolArg(x);
+    const k = x.name + "|" + arg;
+    if (seen.has(k)) { seen.set(k, seen.get(k) + 1); continue; }
+    seen.set(k, 1);
+    if (parts.length < 4) parts.push({ name: x.name, arg, k });
+  }
+  const txt = parts.map(p => {
+    const c = seen.get(p.k);
+    return esc(p.name + (p.arg ? " " + p.arg : "") + (c > 1 ? " ×" + c : ""));
+  }).join(" · ");
+  const rest = items.length - parts.reduce((s, p) => s + seen.get(p.k), 0);
+  return txt + (rest > 0 ? ` · +${rest}` : "");
+}
+function toolArg(e) {
+  const i = e.input || {};
+  if (i.file_path) return baseName(i.file_path);
+  if (i.command) return String(i.command).split("\n")[0].slice(0, 40);
+  if (i.pattern) return String(i.pattern).slice(0, 30);
+  if (i.description) return String(i.description).slice(0, 30);
+  if (i.url) return String(i.url).slice(0, 40);
+  if (i.query) return String(i.query).slice(0, 30);
+  return "";
+}
+function toolItem(e, idx) {
+  const key = "ti@" + idx;
+  const open = !!openState[key];
+  const c = TOOLCOLOR[e.name] || "var(--muted)";
+  let detail = "";
+  if (open) {
+    const i = e.input || {};
+    const head = i.command ? "$ " + i.command
+      : i.file_path ? i.file_path + (i.old_string != null ? "\n\n- " + i.old_string + "\n+ " + i.new_string : "")
+      : JSON.stringify(i, null, 2).slice(0, 4000);
+    detail = `<div class="tdetail">${esc(head)}${e.result ? "\n\n──────\n" + esc(String(e.result).slice(0, 6000)) : ""}</div>`;
+  }
+  return `<div class="titem" data-i="${idx}">
+    <div class="l"><span class="nm" style="color:${c}">${esc(e.name)}</span>
+      <span class="ar">${esc(toolArg(e))}</span>
+      <span class="ok${e.isError ? " err" : ""}">${e.result == null ? "…" : e.isError ? "✗" : "✓"}</span></div>
+    ${detail}</div>`;
+}
+
+// 서브에이전트 블록 (대화 흐름 안)
+function agentBlock(u, box) {
+  const items = EVENTS.slice(u.start, u.end + 1);
+  const all = (AGG && AGG.agents) || [];
+  const rows = items.map(x => all.find(a => a.id === (x.meta && x.meta.agentId) || a.m === x.m)).filter(Boolean);
+  const list = rows.length ? rows : items.map((x, i) => ({
+    n: i + 1, desc: (x.input && x.input.description) || "(설명 없음)",
+    model: (x.meta && x.meta.resolvedModel) || "", tokens: (x.meta && x.meta.totalTokens) || null,
+    tools: (x.meta && x.meta.totalToolUseCount) ?? null, running: x.result == null,
+  }));
+  const tok = list.reduce((s, x) => s + (x.tokens || 0), 0);
+  const durMs = list.reduce((s, x) => Math.max(s, (x.durationMs || 0)), 0);
+  box.className = "agentbox";
+  box.innerHTML = `<div class="r" style="border-bottom:1px solid #241c34">
+      <span style="font-size:12.5px;font-weight:700;color:var(--agent)">서브에이전트 ${list.length}개${list.length > 1 ? " 병렬" : ""}</span>
+      <div class="spacer" style="flex:1"></div>
+      <span class="secmeta" style="color:var(--agent-muted)">${durMs ? dur(durMs) + " · " : ""}${kfmt(tok)} tok</span>
+    </div>${list.map(x => agentRow(x)).join("")}`;
+  return box;
+}
+
+// AskUserQuestion — 의사결정은 대화 흐름에서도 읽히게
+function askBlock(e, box) {
+  const chosen = {};
+  const re = /"([^"]+)"\s*=\s*"([^"]+)"/g; let m;
+  while ((m = re.exec(String(e.result || "")))) chosen[m[1]] = m[2];
+  const qs = (e.input && e.input.questions) || [];
+  box.className = "askbox";
+  box.innerHTML = qs.map(q => {
+    const pick = chosen[q.question] || "";
+    const opts = (q.options || []).map(o =>
+      `<div class="askopt${o.label === pick ? " on" : ""}">${o.label === pick ? "✅" : "○"} ${esc(o.label)}${o.description ? ` — ${esc(o.description)}` : ""}</div>`).join("");
+    const custom = pick && !(q.options || []).some(o => o.label === pick)
+      ? `<div class="askopt on">🗨 내 답변: ${esc(pick)}</div>` : "";
+    return `<div class="askq">⚖ ${esc(q.question)}</div>${opts}${custom}`;
+  }).join("") || `<div class="askq">질문 정보를 읽지 못했습니다</div>`;
+  return box;
+}
+
+function clampBubble(el) {
+  if (!el || el.dataset.clamped) return;
+  const lh = parseFloat(getComputedStyle(el).lineHeight) || 23;
+  if (el.scrollHeight <= lh * 10 + 4) return;
+  el.dataset.clamped = "1";
+  el.classList.add("clamp");
+  el.style.maxHeight = (lh * 10) + "px";
+  const more = document.createElement("div");
+  more.className = "moreline";
+  more.textContent = "⌄ 펼치기";
+  more.onclick = () => {
+    const on = el.classList.toggle("clamp");
+    el.style.maxHeight = on ? (lh * 10) + "px" : "none";
+    more.textContent = on ? "⌄ 펼치기" : "⌃ 접기";
+  };
+  el.after(more);
+}
+function copyAnchor(m) {
+  const u = new URL(location.href);
+  u.searchParams.set("tab", "raw");
+  u.hash = "m" + m;
+  navigator.clipboard?.writeText(u.toString());
+  flash(`링크 복사됨 · #m${m}`);
+}
+function flash(msg) {
+  const el = $("stat");
+  const old = el.textContent;
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = old; }, 1500);
+}
+
+/* ── 세션 내 검색 ─────────────────────────────────────── */
+// 검색은 대화 본문을 찾는 기능이라 대화 탭에서만 노출한다.
+// (요약·구조·변경 탭은 집계 화면이라 검색할 본문이 없다)
+function syncSearchVisibility() {
+  const box = document.querySelector(".searchbox");
+  if (!box) return;
+  const on = TAB === "raw";
+  box.style.display = on ? "" : "none";
+  if (!on && searchQ) { searchQ = ""; $("q").value = ""; hitIdx = 0; applySearch(); }
+}
+
+function applySearch() {
+  hitEls = [];
+  view.querySelectorAll(".hl").forEach(el => { el.replaceWith(document.createTextNode(el.textContent)); });
+  view.normalize();
+  if (!searchQ) { $("hits").textContent = ""; return; }
+  const q = searchQ.toLowerCase();
+  const walker = document.createTreeWalker(view, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    if (!n.nodeValue || !n.nodeValue.toLowerCase().includes(q)) continue;
+    if (n.parentElement.closest("script,style")) continue;
+    targets.push(n);
+  }
+  for (const t of targets) {
+    const frag = document.createDocumentFragment();
+    let rest = t.nodeValue, i;
+    while ((i = rest.toLowerCase().indexOf(q)) >= 0) {
+      if (i) frag.appendChild(document.createTextNode(rest.slice(0, i)));
+      const mark = document.createElement("span");
+      mark.className = "hl";
+      mark.textContent = rest.slice(i, i + q.length);
+      frag.appendChild(mark);
+      hitEls.push(mark);
+      rest = rest.slice(i + q.length);
+    }
+    if (rest) frag.appendChild(document.createTextNode(rest));
+    t.replaceWith(frag);
+  }
+  if (hitIdx >= hitEls.length) hitIdx = 0;
+  markCurrentHit();
+}
+function markCurrentHit() {
+  $("hits").textContent = hitEls.length ? `${hitEls.length ? hitIdx + 1 : 0}/${hitEls.length}` : "0";
+  hitEls.forEach((el, i) => el.classList.toggle("cur", i === hitIdx));
+  const cur = hitEls[hitIdx];
+  if (cur) cur.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+function gotoHit(d) {
+  if (!hitEls.length) return;
+  hitIdx = (hitIdx + d + hitEls.length) % hitEls.length;
+  markCurrentHit();
+}
+
+/* ── 레일 ─────────────────────────────────────────────── */
+function renderRail() {
+  const rail = $("rail");
+  rail.classList.toggle("closed", !railOpen);
+  $("railtoggle").textContent = railOpen ? "‹‹" : "››";
+  if (!INDEX.length) return;
+
+  const me = INDEX.find(x => x.id === SESSION);
+  if (!railProject) railProject = me ? me.project : (SESS && SESS.project) || "";
+  const proj = railProject;
+  const mine = INDEX.filter(x => x.project === proj);
+  // 프로젝트 = 세션이 실행된 작업 디렉터리(cwd)의 마지막 조각. 홈에서 띄운 세션은 '~' 로 묶인다.
+  const cwd = shortPath(cwdOfProject(proj));
+  const { par, leaf } = splitPath(cwd);
+  $("ppar").textContent = par;
+  $("pleaf").textContent = leaf;
+  $("pcnt").textContent = mine.length;
+
+  // 날짜 그룹 (마지막 활동 기준 내림차순)
+  const key = (x) => {
+    const d = new Date(x.lastTs || x.updatedAt);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+  const today = new Date(); const t0 = key({ lastTs: today });
+  const y = new Date(Date.now() - 864e5); const t1 = key({ lastTs: y });
+  const groups = new Map();
+  for (const x of [...mine].sort((a, b) => new Date(b.lastTs || b.updatedAt) - new Date(a.lastTs || a.updatedAt))) {
+    const k = key(x);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(x);
+  }
+  const WD = ["일","월","화","수","목","금","토"];
+  const html = [...groups].map(([k, rows]) => {
+    const open = groupOpen[k] !== false;
+    const d = new Date(k + "T00:00:00");
+    const lab = k === t0 ? "오늘" : k === t1 ? "어제" : k;
+    const sub = k === t0 || k === t1 ? `${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` : WD[d.getDay()];
+    return `<button class="dgroup" data-k="${esc(k)}">
+        <span class="chev">${open ? CHEV_DOWN : CHEV_RIGHT}</span>
+        <span class="lab">${esc(lab)}</span><span class="sub">${esc(sub)}</span>
+        <span class="cnt">${rows.length}</span></button>
+      ${open ? rows.map(r => railRow(r)).join("") : ""}`;
+  }).join("");
+  $("raillist").innerHTML = html;
+  $("raillist").querySelectorAll(".dgroup").forEach(b => b.onclick = () => {
+    const k = b.dataset.k; groupOpen[k] = groupOpen[k] === false; store.set("groupOpen", groupOpen); renderRail();
+  });
+  $("raillist").querySelectorAll(".srow").forEach(b => {
+    b.onclick = (ev) => {
+      if (ev.target.classList.contains("renamebtn") || ev.target.classList.contains("renameinput")) return;
+      if (b.dataset.id !== SESSION) location.href = `/s/${b.dataset.id}`;
+    };
+    const rb = b.querySelector(".renamebtn");
+    if (rb) rb.onclick = (ev) => { ev.stopPropagation(); startRename(b); };
+  });
+
+  const others = new Set(INDEX.map(x => x.project)); others.delete(proj);
+  $("railfoot").querySelector(".l").textContent = `다른 프로젝트 ${others.size}개`;
+  $("railfoot").querySelector(".r").textContent = `세션 ${INDEX.length}`;
+  $("railfoot").onclick = openProjectMenu;
+  $("projsel").onclick = openProjectMenu;
+
+  // statusline 미리보기
+  const m = (AGG && AGG.models && AGG.models.current) || "";
+  const ag = ((AGG && AGG.agents) || []).length;
+  $("slpreview").innerHTML = `<span style="color:var(--accent)">🦞</span> <span style="color:var(--live)">●</span> `
+    + `<span style="color:var(--${famOf(m)})">${esc(famOf(m))}</span> <span class="sep">│</span> `
+    + `<span style="color:var(--agent)">${ag}a</span> <span class="sep">│</span> ${kfmt(USAGE ? USAGE.total : 0)}`;
+
+  // 접힌 레일 — 다시 펼치는 버튼 하나만 둔다(세션 칩·약자 버튼은 눌러도 얻는 게 없어 제거)
+  $("railmini").innerHTML = `<button class="minibtn" id="railtoggle2" title="세션 목록 펼치기">››</button>`;
+  $("railtoggle2").onclick = toggleRail;
+}
+function railRow(r) {
+  const s = r.stats || {};
+  const sel = r.id === SESSION;
+  const live = sel && isLive();
+  return `<div class="srow${sel ? " sel" : ""}${live ? " live" : ""}" data-id="${r.id}">
+    <div class="r1">${live ? `<span class="livedot pulse" style="width:5px;height:5px;box-shadow:none"></span>` : ""}
+      <span class="nm">${esc(r.title || r.id.slice(0, 8))}</span>
+      ${sel ? `<span class="renamebtn" title="세션 이름 수정">이름 수정</span>` : ""}</div>
+    <div class="ts">${esc(fmtTs(r.lastTs || new Date(r.updatedAt).toISOString()))}</div>
+    <div class="r3"><span>대화 ${s.turns || 0}</span>
+      <span style="color:${s.agents ? "var(--agent)" : "inherit"}">${s.agents ? "에이전트 " + s.agents : "—"}</span>
+      <span>${kfmt(s.tokens || 0)}</span>
+      ${s.model ? `<span style="color:var(--${s.family || "other"})">${esc(s.family || s.model)}</span>` : ""}</div>
+  </div>`;
+}
+// 프로젝트별 대표 작업 디렉터리 — 해당 프로젝트 세션 중 cwd가 있는 첫 항목에서 가져온다
+function cwdOfProject(proj) {
+  const hit = INDEX.find(x => x.project === proj && x.cwd);
+  return hit ? hit.cwd : proj;
+}
+// 홈에서 바로 띄운 세션(프로젝트 폴더 없음)인가 — 목록에서 맨 위로 올린다
+function isHomeProject(proj) {
+  return shortPath(cwdOfProject(proj)) === "~/";
+}
+// 경로를 [부모(흐리게), 마지막 폴더(밝게)] 로 쪼갠다. 홈은 쪼개지 않고 통째로 '~/'.
+function splitPath(cwd) {
+  if (cwd === "~/" || cwd === "~") return { par: "", leaf: "~/" };
+  const leaf = baseName(cwd) || cwd;
+  return { par: cwd.slice(0, cwd.length - leaf.length), leaf };
+}
+
+// 프로젝트 전환 드롭다운. 예전엔 클릭하면 세션 목록 페이지로 튀어서 맥락이 끊겼다.
+function openProjectMenu() {
+  document.getElementById("projmenu")?.remove();
+  const anchor = $("projsel").getBoundingClientRect();
+  const groups = new Map();
+  for (const x of INDEX) {
+    if (!groups.has(x.project)) groups.set(x.project, []);
+    groups.get(x.project).push(x);
+  }
+  const recency = (list) => Math.max(...list.map(s => new Date(s.lastTs || s.updatedAt)));
+  const rows = [...groups].sort((a, b) => {
+    // 전역(홈에서 띄운 세션)을 항상 맨 위로, 그 다음은 최근 활동순
+    const ha = isHomeProject(a[0]), hb = isHomeProject(b[0]);
+    if (ha !== hb) return ha ? -1 : 1;
+    return recency(b[1]) - recency(a[1]);
+  });
+
+  const menu = document.createElement("div");
+  menu.id = "projmenu";
+  menu.className = "projmenu";
+  menu.style.left = anchor.left + "px";
+  menu.style.top = (anchor.bottom + 6) + "px";
+  menu.innerHTML = rows.map(([proj, list]) => {
+    const cwd = shortPath(cwdOfProject(proj));
+    const { par, leaf } = splitPath(cwd);
+    const live = list.some(s => s.id === SESSION);
+    return `<button class="pmrow${proj === railProject ? " on" : ""}" data-proj="${esc(proj)}">
+      <span class="dot" style="${live ? "" : "opacity:.25"}"></span>
+      <span class="p"><span class="par">${esc(par)}</span><span class="leaf">${esc(leaf)}</span></span>
+      <span class="c">${list.length}</span></button>`;
+  }).join("") + `<div class="pmfoot"><button class="pmrow" data-all="1">
+      <span class="p"><span class="leaf">전체 세션 목록 열기</span></span></button></div>`;
+  document.body.appendChild(menu);
+
+  menu.querySelectorAll(".pmrow").forEach(b => b.onclick = (ev) => {
+    ev.stopPropagation();
+    if (b.dataset.all) { location.href = "/"; return; }
+    railProject = b.dataset.proj;
+    menu.remove();
+    renderRail();
+  });
+  setTimeout(() => {
+    const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener("click", close); } };
+    document.addEventListener("click", close);
+  }, 0);
+}
+
+function startRename(rowEl) {
+  if (editingName) return;
+  editingName = true;
+  const nm = rowEl.querySelector(".nm");
+  const btn = rowEl.querySelector(".renamebtn");
+  const cur = nm.textContent;
+  const input = document.createElement("input");
+  input.className = "renameinput";
+  input.value = cur;
+  nm.replaceWith(input);
+  if (btn) btn.style.display = "none";
+  input.focus(); input.select();
+  let saved = false;
+  const save = async () => {
+    if (saved) return; saved = true; editingName = false;
+    const next = input.value.trim();
+    if (next && next !== cur) {
+      await fetch(`/api/rename/${SESSION}?title=${encodeURIComponent(next)}`).catch(() => {});
+      const row = INDEX.find(x => x.id === SESSION);
+      if (row) row.title = next;
+    }
+    renderRail(); renderHero();
+  };
+  const cancel = () => { if (saved) return; saved = true; editingName = false; renderRail(); };
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  };
+  input.onblur = save;
+}
+function toggleRail() {
+  railOpen = !railOpen;
+  store.set("railOpen", railOpen);
+  renderRail();
+}
+
+/* ── 새 활동 알림 ─────────────────────────────────────── */
+// 알약은 두 가지 경우에 뜬다.
+//  ① 새 이벤트가 도착했는데 사용자가 맨 아래에 없을 때 → "새 활동 N건"
+//  ② 긴 대화에서 한 화면 이상 위로 올라가 있을 때 → "맨 아래로" (되돌아갈 길을 항상 열어둔다)
+let farUp = false;
+function updateNewBar() {
+  const bar = $("newbar");
+  const show = (newActivity > 0 && !atBottom) || (TAB === "raw" && farUp);
+  if (!show) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const pill = $("newpill");
+  if (newActivity > 0) {
+    pill.querySelector(".t").textContent = `새 활동 ${newActivity}건`;
+    pill.querySelector(".s").textContent = "맨 아래로 ↓";
+    pill.querySelector("i").style.display = "";
+  } else {
+    pill.querySelector(".t").textContent = "맨 아래로";
+    pill.querySelector(".s").textContent = "가장 최근 대화 ↓";
+    pill.querySelector("i").style.display = "none";
+  }
+}
+scroller.addEventListener("scroll", () => {
+  const gap = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  atBottom = gap < 80;
+  farUp = gap > scroller.clientHeight;      // 한 화면(1page) 이상 위
+  if (atBottom) newActivity = 0;
+  updateNewBar();
+});
+$("newpill").onclick = () => {
+  scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+  newActivity = 0; updateNewBar();
+};
+
+/* ── 빈/에러 상태 ─────────────────────────────────────── */
+function renderNotFound() {
+  NOTFOUND = true;
+  document.querySelector(".shell").innerHTML = `<div class="empty">
+      <div class="ic">?</div>
+      <div class="h">이 세션을 찾을 수 없습니다</div>
+      <div class="d"><span class="m">/s/${esc(SESSION.slice(0, 8))}</span> 에 해당하는 JSONL이
+        <span class="m">~/.claude/projects</span> 아래에 없습니다.
+        세션이 삭제되었거나 다른 머신에서 만든 링크일 수 있습니다.</div>
+      <div class="acts"><button class="btn-primary" id="toList">세션 목록으로</button>
+        <button class="btn-sec" id="retry">다시 시도</button></div>
+      <div class="ssenote"><span class="k">SSE</span><span class="t">연결 중단 · 자동 재시도 안 함</span></div>
+    </div>`;
+  $("toList").onclick = () => location.href = "/";
+  $("retry").onclick = () => location.reload();
+  $("dot").className = "livedot off";
+  $("stat").className = "statustext off";
+  $("stat").textContent = "세션 없음";
+  $("htitle").textContent = "세션을 찾을 수 없습니다";
+  $("hpath").textContent = "";
+  $("metrics").innerHTML = `<button class="btn-export" disabled>Export</button>`;
+}
+
+/* ── Export ───────────────────────────────────────────── */
+// 저장 위치·파일명을 정하고, 남에게 줄 파일이면 자격증명을 가릴 수 있게 한다.
+let exportDefaults = null;
+async function doExport() {
+  if (!exportDefaults) {
+    try { exportDefaults = await (await fetch("/api/export-defaults")).json(); }
+    catch { exportDefaults = { dir: "~/.claude-watch/exports" }; }
+  }
+  const homey = (p) => String(p || "").replace(exportDefaults.home || " ", "~");
+  const defName = `[${new Date().toISOString().slice(2, 10).replace(/-/g, "")}] ${sessionTitle()}`
+    .replace(/[\/\\:*?"<>|\n\r]+/g, " ").trim().slice(0, 80);
+
+  document.getElementById("exportdlg")?.remove();
+  const dlg = document.createElement("div");
+  dlg.id = "exportdlg";
+  dlg.className = "modal";
+  dlg.innerHTML = `<div class="sheet">
+      <div class="sh">세션 내보내기</div>
+      <div class="sd">서버 없이 열리는 자체완결 HTML 파일 하나로 저장합니다.</div>
+      <label class="fl">저장 위치</label>
+      <div class="frow">
+        <input class="fi mono" id="exDir" value="${esc(homey(exportDefaults.dir))}" spellcheck="false" />
+        ${exportDefaults.canPick === false ? "" : `<button class="iconbtn" id="exPick" title="폴더 선택">${FOLDER_ICON}</button>`}
+      </div>
+      <label class="fl">파일명</label>
+      <input class="fi" id="exName" value="${esc(defName)}" spellcheck="false" />
+      <label class="ck"><input type="checkbox" id="exMask" />
+        <span><b>대화 내역 중 민감 정보 마스킹</b>
+        <span class="sd">API 키·토큰·비밀번호·개인키를 <span class="icode">••••</span>로 가립니다. 체크를 풀면 원본 그대로 나갑니다.</span></span></label>
+      <div class="acts">
+        <button class="btn-sec" id="exCancel">취소</button>
+        <button class="btn-primary" id="exGo">내보내기</button>
+      </div>
+      <div class="sd" id="exMsg"></div>
+    </div>`;
+  document.body.appendChild(dlg);
+
+  const close = () => dlg.remove();
+  $("exCancel").onclick = close;
+  const pick = $("exPick");
+  if (pick) pick.onclick = async () => {
+    pick.disabled = true;
+    const cur = $("exDir").value.trim().replace(/^~/, exportDefaults.home || "~");
+    try {
+      const r = await fetch(`/api/pick-folder?start=${encodeURIComponent(cur)}`);
+      const d = await r.json();
+      if (d.dir) $("exDir").value = homey(d.dir);
+      else if (d.error) $("exMsg").innerHTML = `<span style="color:var(--del)">${esc(d.error)}</span>`;
+    } catch (e) { $("exMsg").innerHTML = `<span style="color:var(--del)">폴더 선택 실패: ${esc(e.message)}</span>`; }
+    finally { pick.disabled = false; }
+  };
+  dlg.onclick = (e) => { if (e.target === dlg) close(); };
+  document.addEventListener("keydown", function esc2(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
+  });
+  $("exName").focus(); $("exName").select();
+
+  $("exGo").onclick = async () => {
+    const go = $("exGo"), msg = $("exMsg");
+    go.disabled = true; go.textContent = "내보내는 중…";
+    try {
+      const q = new URLSearchParams({
+        dir: $("exDir").value.trim(),
+        name: $("exName").value.trim(),
+        mask: $("exMask").checked ? "1" : "0",
+      });
+      const r = await fetch(`/export/${SESSION}?${q}`);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      const m = d.masked;
+      const detail = m && m.total
+        ? `민감정보 ${m.total}개 가림 (${Object.entries(m.counts).map(([k, v]) => `${k} ${v}`).join(", ")})`
+        : (m ? "가릴 민감정보를 찾지 못했습니다" : "");
+      msg.innerHTML = `<span style="color:var(--add)">저장됨</span> <span class="icode">${esc(homey(d.path))}</span>`
+        + (detail ? `<br>${esc(detail)}` : "");
+      flash(`저장됨: ${d.file}`);
+      go.textContent = "완료";
+      setTimeout(close, m && m.total ? 3200 : 1400);
+    } catch (e) {
+      msg.innerHTML = `<span style="color:var(--del)">실패: ${esc(e.message)}</span>`;
+      go.disabled = false; go.textContent = "내보내기";
+    }
+  };
+}
+
+/* ── 초기화 ───────────────────────────────────────────── */
+try { mermaid.initialize({ startOnLoad: false, theme: "dark" }); } catch {}
+try { if (window.hljs) hljs.configure({ ignoreUnescapedHTML: true }); } catch {}
+
+$("railtoggle").onclick = toggleRail;
+$("keep").onclick = () => {
+  keepExpanded = !keepExpanded;
+  store.set("keepExpanded", keepExpanded);
+  $("keep").classList.toggle("on", keepExpanded);
+  $("keep").setAttribute("aria-checked", String(keepExpanded));
+};
+$("keep").classList.toggle("on", keepExpanded);
+let qTimer = null;
+$("q").oninput = (e) => {
+  searchQ = e.target.value.trim();
+  hitIdx = 0;
+  clearTimeout(qTimer);
+  qTimer = setTimeout(applySearch, 160);
+};
+$("q").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); gotoHit(e.shiftKey ? -1 : 1); } };
+$("hprev").onclick = () => gotoHit(-1);
+$("hnext").onclick = () => gotoHit(1);
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "f") { e.preventDefault(); $("q").focus(); $("q").select(); }
+});
+
+function jumpToHash() {
+  const h = location.hash.replace(/^#/, "");
+  if (!/^m\d+$/.test(h)) return;
+  if (TAB !== "raw") { TAB = "raw"; renderTabs(); draw(); }
+  const el = document.getElementById(h);
+  if (el) el.scrollIntoView({ block: "center" });
+}
+
+function boot(payload) {
+  EVENTS = payload.events; AGG = payload.agg; USAGE = payload.usage; SESS = payload.session;
+  renderHero(); renderTabs(); draw(); renderRail(); syncSearchVisibility();
+  setTimeout(jumpToHash, 60);
+}
+
+if (EXPORT) {
+  $("stat").textContent = "내보낸 스냅샷";
+  $("dot").className = "livedot off";
+  renderHero(); renderTabs(); draw(); syncSearchVisibility();
+  document.querySelector(".rail").style.display = "none";
+  setTimeout(jumpToHash, 60);
+} else {
+  // 레일용 색인 (실패해도 본문은 뜬다)
+  fetch("/api/index").then(r => r.json()).then(d => {
+    INDEX = d; renderRail(); renderHero();
+    // 색인이 도착해야 세션 제목(ai-title/별칭)을 쓸 수 있다 → 요약 탭이면 헤드라인 갱신
+    if (TAB === "summary") draw();
+  }).catch(() => {});
+
+  fetch(`/api/session/${SESSION}`).then(async (r) => {
+    if (r.status === 404) return renderNotFound();
+    boot(await r.json());
+
+    const es = new EventSource(`/events/${SESSION}`);
+    es.addEventListener("init", (m) => {
+      const p = JSON.parse(m.data);
+      EVENTS = p.events; AGG = p.agg; USAGE = p.usage; SESS = p.session;
+      $("stat").classList.remove("off");
+      renderHero();
+      if (TAB !== "raw") draw(); else paintChatFrom(0);
+    });
+    // 증분 패치: 달라진 뒷부분만 갈아끼운다 → 펼쳐둔 항목·스크롤이 살아남는다
+    es.addEventListener("patch", (m) => {
+      const p = JSON.parse(m.data);
+      const added = Math.max(0, p.total - EVENTS.length);
+      EVENTS = EVENTS.slice(0, p.from).concat(p.events);
+      AGG = p.agg; USAGE = p.usage;
+      renderHero();
+      if (TAB === "raw") {
+        if (keepExpanded) paintChatFrom(p.from);
+        else draw();
+      } else draw();
+      if (added > 0 && !atBottom) { newActivity += added; updateNewBar(); }
+    });
+    es.onerror = () => {
+      $("dot").className = "livedot off";
+      $("stat").className = "statustext off";
+      $("stat").textContent = "재연결 중…";
+    };
+  }).catch(() => renderNotFound());
 }
 </script>
 </body>

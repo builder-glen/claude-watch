@@ -1,48 +1,98 @@
 # 🦞 claude-watch
 
-Claude Code 터미널 세션을 **사람이 읽기 좋은 실시간 HTML 문서**로 시각화하는 뷰어.
+Claude Code 세션 로그(JSONL)를 사람이 읽기 좋은 실시간 HTML 문서로 보여주는 로컬 뷰어.
 
-터미널에 흘러가는 파일 수정·명령 실행·AI 설명을 따라가기 어렵다는 문제에서 출발했습니다.
-claude-watch는 Claude Code가 디스크에 기록하는 세션 로그(JSONL)를 실시간으로 읽어, 세션별로
-깔끔한 카드 문서로 보여줍니다. 비개발자나 옆에서 지켜보는 사람도 "지금 AI가 뭘 하는지" 한눈에
-파악할 수 있습니다.
+- 요약 / 구조 / 변경 / 대화 4개 탭
+- 실시간 갱신(SSE) — 새 활동만 증분 전송, 펼쳐둔 항목 유지
+- 서브에이전트·모델 전환·토큰/비용 표시
+- 자체완결 HTML로 내보내기(민감정보 마스킹 선택)
 
-## 동작 원리
+## 요구 사항
 
-Claude Code는 모든 세션을 `~/.claude/projects/<project>/<session>.jsonl` 에 한 줄씩 기록합니다.
-claude-watch는 이 파일을 감시(tail)해서 브라우저로 실시간 전송(SSE)합니다.
+- Node.js 18+ (의존성 0 — Node 내장 모듈만 사용)
+- Claude Code (세션 로그를 `~/.claude/projects/` 에 남기는 주체)
+- macOS 권장 — `bin/cw`, `bin/statusline.sh`, 내보내기 폴더 선택창이 macOS 기준
 
-```
-Claude Code ──writes──> <session>.jsonl ──watch──> [로컬 서버] ──SSE──> [브라우저: 세션별 HTML]
-```
-
-- `GET /`            — 세션 목록(최근순)
-- `GET /s/:id`       — 세션 전용 HTML 뷰어 (실시간 갱신)
-- `GET /events/:id`  — SSE 스트림 (파일 변경 시 스냅샷 push)
-
-## 실행
+## 설치
 
 ```bash
+git clone https://github.com/immortalemployee2021-gif/claude-watch.git
+cd claude-watch
 node server.mjs            # http://localhost:4317
 ```
 
-환경변수 `CW_PORT` 로 포트 변경 가능.
+빌드 단계 없음. `npm install` 필요 없음.
 
-## 렌더링 매핑
+### 터미널 하단 링크 + 자동 기동 (선택)
 
-| JSONL content | 화면 |
+`~/.claude/settings.json` 에 statusLine을 등록하면, Claude Code를 쓸 때마다 터미널 하단에
+현재 세션 뷰어 링크가 뜨고 서버가 자동으로 뜹니다.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash /절대경로/claude-watch/bin/statusline.sh"
+  }
+}
+```
+
+기존에 claude-hud를 쓰고 있으면 그 출력을 그대로 유지한 채 링크 한 줄만 덧붙입니다.
+
+### cw 명령 등록 (선택)
+
+```bash
+ln -s "$PWD/bin/cw" /usr/local/bin/cw
+```
+
+## 명령
+
+| 명령 | 하는 일 |
 |---|---|
-| `tool_use` Bash | ⚡ 명령 + 설명 + 결과(접힘) |
-| `tool_use` Edit | 📝 diff (old/new 색상) |
-| `tool_use` Write | 📄 파일 생성 |
-| `tool_use` Read | 📖 한 줄 |
-| `assistant`/`text` | 💬 AI 설명 |
-| `thinking` | 💭 생각(기본 접힘) |
-| `user`/`text` | 🧑 사용자 입력 |
+| `node server.mjs` | 서버 실행 (기본 포트 4317) |
+| `CW_PORT=5000 node server.mjs` | 포트 변경 |
+| `CW_DEV=1 node server.mjs` | 개발 모드 — HTML을 매 요청마다 다시 읽음(새로고침만으로 반영) |
+| `cw history` | 최근 세션 목록을 터미널에 출력 |
+| `cw open <n>` | n번 세션을 브라우저로 열기 |
+| `cw web` | 전체 세션 목록 페이지 열기 |
+| `cw rename <n> "제목"` | 세션 제목 바꾸기 |
+| `cw project <n> "이름"` | 세션의 프로젝트 재지정 |
 
-## 상태
+## HTTP 엔드포인트
 
-MVP — 정적/실시간 뷰어 동작. 다음: 터미널 하단 OSC8 링크(statusLine) 연동, Vite+React 이관.
+| 경로 | 내용 |
+|---|---|
+| `GET /` | 세션 목록 페이지 |
+| `GET /s/:id` | 세션 뷰어 |
+| `GET /api/index` | 세션 색인(JSON) |
+| `GET /api/session/:id` | 이벤트 + 집계(JSON) |
+| `GET /events/:id` | SSE — `init` 1회 후 `patch`(변경분만) |
+| `GET /export/:id` | 자체완결 HTML 저장. `?dir=&name=&mask=1` |
+| `GET /api/ai/summary\|diagram/:id` | AI 요약·다이어그램 생성(`claude -p`, 별도 키 불필요) |
+
+## 설치되는 것 / 만들어지는 것
+
+레포 밖에 만드는 건 전부 `~/.claude-watch/` 아래이며, **원본 세션 로그는 절대 수정하지 않습니다.**
+
+| 경로 | 내용 |
+|---|---|
+| `~/.claude-watch/index.json` | 세션 색인 캐시(mtime 비교로 바뀐 것만 갱신) |
+| `~/.claude-watch/cache/` | AI 요약·다이어그램 결과 캐시 |
+| `~/.claude-watch/exports/` | 내보낸 HTML 기본 저장 위치 |
+| `~/.claude-watch/aliases.json` | 사용자가 바꾼 세션 제목 |
+| `~/.claude-watch/project-overrides.json` | 사용자가 재지정한 프로젝트 |
+| `~/.claude-watch/statusline-input.json` | statusLine이 넘겨준 구독 한도 등 |
+
+읽기만 하는 것: `~/.claude/projects/**/*.jsonl` (세션 로그), `<세션id>/subagents/*.jsonl` (서브에이전트 전사).
+
+## 제거
+
+```bash
+rm -rf ~/.claude-watch          # 캐시·색인·내보낸 파일
+rm /usr/local/bin/cw            # 심볼릭 링크를 만들었다면
+```
+
+`~/.claude/settings.json` 의 `statusLine` 항목도 지우세요.
 
 ## 라이선스
 
