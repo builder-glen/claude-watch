@@ -16,7 +16,7 @@ Claude Code 세션 로그(JSONL)를 사람이 읽기 좋은 실시간 HTML 문�
 ## 설치
 
 ```bash
-git clone https://github.com/immortalemployee2021-gif/claude-watch.git
+git clone https://github.com/builder-glen/claude-watch.git
 cd claude-watch
 node server.mjs            # http://localhost:4317
 ```
