@@ -8,3 +8,42 @@ dist/
 .serena/
 scratchpad/
 .gstack/
+.claude/settings.local.json
+settings.local.json
+
+# ── 방어선 ──────────────────────────────────────────────────────
+# 이 저장소는 공개다. 아래는 "실수로라도 들어오면 안 되는 것"들을 미리 막아둔 것이며,
+# 정상 동작에는 하나도 필요하지 않다(런타임 산출물은 전부 ~/.claude-watch/ 아래에 생긴다).
+
+# Claude Code 세션 로그 — 대화 전문·파일 내용·명령 출력이 그대로 들어있다
+*.jsonl
+transcripts/
+subagents/
+
+# 내보낸 세션 HTML (마스킹 안 했으면 자격증명이 들어있다)
+exports/
+*.export.html
+# 내보내기 기본 파일명은 "[YYMMDD] 프로젝트 · 제목.html" 이다
+[[]2[0-9][0-9][0-9][0-9][0-9]]*.html
+# 루트에 놓인 html 은 전부 차단 — 뷰어는 public/ 아래에만 있다
+/*.html
+
+# AI 요약·다이어그램 캐시
+cache/
+*-summary.json
+*-diagram.json
+
+# 세션 색인 · 사용자 설정 (~/.claude-watch 를 레포로 복사한 경우 대비)
+index.json
+aliases.json
+project-overrides.json
+statusline-input.json
+
+# 자격증명
+.env
+.env.*
+*.pem
+*.key
+*.p12
+id_rsa*
+.netrc
