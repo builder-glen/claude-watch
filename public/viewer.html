@@ -1258,7 +1258,7 @@ function renderUnit(u, prevModel) {
     case "skill_note":
     case "system_note": {
       const isSkill = e.kind === "skill_note";
-      const name = isSkill ? (e.text.match(/skills\/([^/\s]+)/) || [])[1] || "" : "";
+      const name = isSkill ? (e.skill || (e.text.match(/skills\/([^/\s]+)/) || [])[1] || "") : "";
       const label = isSkill
         ? `skill: ${name} 주입 · ${(Math.round(e.text.length / 3.6)).toLocaleString()} tok — 사용자가 입력한 내용이 아닙니다`
         : e.text.replace(/\s+/g, " ").slice(0, 160);
