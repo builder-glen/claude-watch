@@ -8,7 +8,7 @@
 //  • GET /health        서버 생존 확인(statusLine이 ping)
 
 import http from "node:http";
-import { readFile, readdir, stat, mkdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, mkdir, writeFile, rm, unlink } from "node:fs/promises";
 import { watch } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, basename } from "node:path";
@@ -425,6 +425,8 @@ const server = http.createServer(async (req, res) => {
       const events = await eventsForFile(file);
       const out = await runClaude(kind, buildDigest(events));
       out.atEventCount = events.length;
+      await dropGeneratedSession(out.sessionId);   // 다 쓴 생성 세션 로그는 남기지 않는다
+      delete out.sessionId;
       await writeCache(id, kind, out);
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify(out));
     } catch (e) {
@@ -450,7 +452,13 @@ const server = http.createServer(async (req, res) => {
         let c = await readCache(id, kind);
         const stale = !c || (c.atEventCount != null && c.atEventCount < events.length);
         if (refresh && stale) {
-          try { const out = await runClaude(kind, buildDigest(events)); out.atEventCount = events.length; await writeCache(id, kind, out); c = out; } catch {}
+          try {
+            const out = await runClaude(kind, buildDigest(events));
+            out.atEventCount = events.length;
+            await dropGeneratedSession(out.sessionId);
+            delete out.sessionId;
+            await writeCache(id, kind, out); c = out;
+          } catch {}
         }
         cache[kind] = (c && c.text) ? c : null;
       }
@@ -625,6 +633,27 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+// claude -p 는 호출마다 자기 세션 로그를 남긴다. 요약을 만들고 나면 그 로그는 쓸 데가 없다.
+// 응답의 session_id 로 해당 파일만 지운다(전용 cwd 안에 있는 것만 — 실수로 실제 세션을 지우지 않게).
+async function dropGeneratedSession(sessionId) {
+  if (!sessionId) return null;
+  let dirs = [];
+  try { dirs = await readdir(PROJECTS_DIR); } catch { return null; }
+  for (const d of dirs) {
+    const file = join(PROJECTS_DIR, d, sessionId + ".jsonl");
+    try { await stat(file); } catch { continue; }
+    // 안전장치: 그 세션의 cwd 가 우리 전용 폴더여야 한다
+    let text = "";
+    try { text = await readFile(file, "utf8"); } catch { continue; }
+    if (!extractCwd(text).startsWith(AI_CWD)) return { skipped: file };
+    try { await unlink(file); } catch { return null; }
+    // 서브에이전트 전사 폴더가 생겼다면 함께
+    try { await rm(join(PROJECTS_DIR, d, sessionId), { recursive: true, force: true }); } catch {}
+    return { removed: file };
+  }
+  return null;
+}
+
 // 세션 이벤트 → AI에 넘길 압축 다이제스트(사용자 질문 + 도구 사용 + 변경 파일)
 function buildDigest(events) {
   const prompts = [];
@@ -687,6 +716,7 @@ async function runClaude(kind, digest) {
         const o = JSON.parse(out);
         const u = o.usage || {};
         resolve({
+          sessionId: o.session_id || "",
           text: (o.result || "").trim(),
           usage: {
             input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
