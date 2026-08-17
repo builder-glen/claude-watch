@@ -210,6 +210,21 @@ function extractAiTitle(text) {
   return t;
 }
 
+// AI 요약 캐시에서 한 줄 결론을 꺼낸다. Claude Code 가 붙인 ai-title 보다
+// 세션 내용을 잘 대표하므로 목록·상단 제목에 이걸 우선 쓴다.
+async function summaryHeadline(id) {
+  const c = await readCache(id, "summary");
+  if (!c || typeof c.text !== "string") return "";
+  const t = c.text.replace(/^\s*```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const pick = (raw) => { try { const o = JSON.parse(raw); return (o && o.headline) ? String(o.headline).trim() : ""; } catch { return ""; } };
+  let h = pick(t);
+  if (!h) {
+    const i = t.indexOf("{"), j = t.lastIndexOf("}");
+    if (i >= 0 && j > i) h = pick(t.slice(i, j + 1));
+  }
+  return h.slice(0, 120);
+}
+
 async function buildIndex() {
   const sessions = await findSessions();
   const cached = await readJson(INDEX_PATH, {});
@@ -259,7 +274,10 @@ async function buildIndex() {
     out[s.id].project = overrides[s.id] || out[s.id].projectRaw;
     // 제목 해석: 별칭 > ai-title > 첫 질문 (별칭은 매번 현재값 반영)
     out[s.id].alias = aliases[s.id] || "";
-    out[s.id].title = aliases[s.id] || out[s.id].aiTitle || out[s.id].firstPrompt || s.id.slice(0, 8);
+    // 요약이 있으면 그 한 줄 결론을 제목으로. 캐시는 mtime 과 무관하게 갱신될 수 있어 매번 읽는다.
+    out[s.id].headline = await summaryHeadline(s.id);
+    out[s.id].title = aliases[s.id] || out[s.id].headline || out[s.id].aiTitle
+      || out[s.id].firstPrompt || s.id.slice(0, 8);
   }
   await writeJson(INDEX_PATH, out);
   return out;

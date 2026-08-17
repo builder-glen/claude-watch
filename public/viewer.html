@@ -28,6 +28,7 @@
   /* Tweaks — 뷰어에서 조절하고 localStorage 에 저장한다 */
   --fs:1;                  /* 글자 크기 배율. 모든 font-size 가 이 값과 곱해진다 */
   --content-max:1280px;    /* 본문 최대 폭 */
+  --rail-w:357px;          /* 세션 목록 폭 (기존 238 → +50%) */
   --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
   --sans:Pretendard, -apple-system, system-ui, 'Apple SD Gothic Neo', sans-serif;
   --ease:cubic-bezier(0.23, 1, 0.32, 1);
@@ -139,7 +140,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 #view{width:100%;display:flex;flex-direction:column;align-items:center}
 
 /* ══ 3. 세션 레일 ══ */
-.rail{width:238px;flex-shrink:0;border-right:1px solid var(--line);background:var(--panel);
+.rail{width:var(--rail-w);flex-shrink:0;border-right:1px solid var(--line);background:var(--panel);
   display:flex;flex-direction:column;min-height:0}
 .rail-head{display:flex;flex-direction:column;gap:9px;padding:11px 12px 10px}
 .rail-head .row1{display:flex;align-items:center;gap:8px}
@@ -532,7 +533,7 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
 }
 
 /* ══ 반응형 ══ */
-@media (max-width:1180px){ .rail{width:48px;align-items:center;padding:13px 0;gap:8px}
+@media (max-width:1300px){ .rail{width:48px;align-items:center;padding:13px 0;gap:8px}
   .rail .rail-head,.rail .raillist,.rail .railfoot,.rail .statusline{display:none}
   .rail .railmini{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;width:100%} }
 @media (max-width:820px){
