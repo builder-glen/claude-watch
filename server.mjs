@@ -145,6 +145,10 @@ async function sessionPayload(sess) {
 // 계정 전체 기준(세션별 아님). 데이터 없으면 null.
 const CW_DIR = join(homedir(), ".claude-watch");
 const CACHE_DIR = join(CW_DIR, "cache");
+// AI 요약/다이어그램은 claude -p 를 부르는데, 그 호출도 자기 세션 로그를 남긴다.
+// 그냥 두면 사용자 프로젝트 목록에 "다음은 Claude Code 코딩 세션의 작업 기록이다…" 같은
+// 껍데기 세션이 계속 쌓인다. 전용 cwd 에서 돌려 한곳에 모으고 목록에서 제외한다.
+const AI_CWD = join(CW_DIR, "ai");
 
 // AI 결과 캐시: ~/.claude-watch/cache/<sessionId>-<kind>.json = { text, usage, atEventCount }
 const cachePath = (id, kind) => join(CACHE_DIR, `${id}-${kind}.json`);
@@ -175,6 +179,16 @@ function extractCwd(text) {
 function extractProject(text, fallback) {
   const cwd = extractCwd(text);
   return cwd ? (cwd.split("/").filter(Boolean).pop() || fallback) : fallback;
+}
+
+// claude-watch 자신이 AI 요약/다이어그램을 만들며 생성한 세션인가.
+//  ① 전용 cwd 에서 돌린 것(현재 방식)  ② 예전 방식으로 프로젝트 폴더에 남은 것은 프롬프트 서명으로
+const AI_PROMPT_SIG = /다음은 Claude Code 코딩 세션의 작업 기록이다|Mermaid flowchart로 그려라/;
+function isGeneratedSession(text, cwd) {
+  if (cwd && cwd.startsWith(AI_CWD)) return true;
+  // 서명은 세션 앞부분(첫 사용자 메시지)에만 있어야 한다 — 이 문구를 대화에서 언급한 세션이
+  // 잘못 걸리지 않도록 앞 20줄만 본다.
+  return AI_PROMPT_SIG.test(text.split("\n").slice(0, 20).join("\n"));
 }
 
 // entrypoint 추출 — "cli"=사람 인터랙티브, "sdk-cli"=프로그램/앱 자동(노이즈)
@@ -218,6 +232,7 @@ async function buildIndex() {
           id: s.id, projectRaw: extractProject(text, s.project), updatedAt: s.mtime,
           cwd: extractCwd(text),
           interactive: extractEntrypoint(text) === "cli",
+          generated: isGeneratedSession(text, extractCwd(text)),
           createdAt: st.firstTs ? new Date(st.firstTs).getTime() : s.mtime,
           lastTs: st.lastTs || null,
           aiTitle: extractAiTitle(text),
@@ -327,7 +342,9 @@ const server = http.createServer(async (req, res) => {
   // 색인 JSON (목록·검색·CLI 공용). 열 때 mtime 비교로 바뀐 것만 갱신.
   if (path === "/api/index") {
     const idx = await buildIndex();
-    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(Object.values(idx)));
+    // claude-watch 가 스스로 만든 세션은 목록에서 뺀다(사용자가 한 작업이 아니다)
+    const list = Object.values(idx).filter((x) => !x.generated);
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify(list));
   }
 
   // 제목 수정(별칭) — 영구 저장
@@ -651,10 +668,12 @@ const PROMPTS = {
 
 // 기존 Claude Code 인증으로 headless 호출 (별도 API 키 불필요)
 // json 출력으로 받아 결과 텍스트 + 토큰/비용(usage)을 함께 반환한다.
-function runClaude(kind, digest) {
+async function runClaude(kind, digest) {
+  await mkdir(AI_CWD, { recursive: true });
   return new Promise((resolve, reject) => {
     const child = spawn("claude", ["-p", "--model", "haiku", "--output-format", "json"], {
       stdio: ["pipe", "pipe", "pipe"],
+      cwd: AI_CWD,          // 생성 세션 로그를 사용자 프로젝트에서 떼어놓는다
     });
     let out = "", err = "";
     const killer = setTimeout(() => child.kill("SIGKILL"), 120000);

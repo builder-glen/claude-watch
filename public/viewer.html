@@ -1710,7 +1710,8 @@ function renderRail() {
   const me = INDEX.find(x => x.id === SESSION);
   if (!railProject) railProject = me ? me.project : (SESS && SESS.project) || "";
   const proj = railProject;
-  const mine = INDEX.filter(x => x.project === proj);
+  // 앱/SDK가 자동으로 만든 세션은 제외 — 목록 페이지와 같은 기준
+  const mine = INDEX.filter(x => x.project === proj && x.interactive !== false);
   // 프로젝트 = 세션이 실행된 작업 디렉터리(cwd)의 마지막 조각. 홈에서 띄운 세션은 '~' 로 묶인다.
   const cwd = shortPath(cwdOfProject(proj));
   const { par, leaf } = splitPath(cwd);
@@ -1810,6 +1811,7 @@ function openProjectMenu() {
   const anchor = $("projsel").getBoundingClientRect();
   const groups = new Map();
   for (const x of INDEX) {
+    if (x.interactive === false) continue;
     if (!groups.has(x.project)) groups.set(x.project, []);
     groups.get(x.project).push(x);
   }
