@@ -167,6 +167,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .statusline .body{font-family:var(--mono);font-size:calc(11px * var(--fs) * var(--fs-rail,1));color:var(--muted);white-space:nowrap;overflow:hidden}
 .statusline .sep{color:#3a3a44}
 /* 내보내기 다이얼로그 */
+#tip{position:fixed;z-index:70;max-width:340px;padding:7px 10px;border-radius:8px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.45);
+  color:var(--ink-2);font-family:var(--mono);font-size:calc(11.5px * var(--fs) * var(--fs-ui,1));
+  line-height:1.55;word-break:break-all;pointer-events:none;opacity:0;
+  transition:opacity 120ms ease;white-space:pre-wrap}
+#tip.on{opacity:1}
+[data-tip]{cursor:help}
 .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
   background:rgba(0,0,0,.55);padding:24px}
 .modal .sheet{width:100%;max-width:520px;display:flex;flex-direction:column;gap:9px;padding:22px;
@@ -897,7 +904,7 @@ function renderSummary() {
     <div class="pane" style="gap:10px">
       <div class="sechead"><div class="seclab">사용한 스킬 ${skills.length}개</div><div class="spacer"></div>
         <div class="secmeta">${skills.length ? "주입 " + kfmt(skTok) + " tok" : ""}</div></div>
-      ${skills.length ? `<div class="listbox">${skills.map(s => `<div class="r" title="${esc(s.name)} · 주입 ${s.tokens.toLocaleString()} tok">
+      ${skills.length ? `<div class="listbox">${skills.map(s => `<div class="r" data-tip="${esc(s.name)} · 주입 ${s.tokens.toLocaleString()} tok" tabindex="0">
         <span class="skl">SKL</span><span class="skname">${esc(s.name)}</span>
         <span class="sktok">${kfmt(s.tokens)}</span></div>`).join("")}</div>`
         : `<div class="listbox"><div class="r"><span class="sktok">주입된 스킬이 없습니다</span></div></div>`}
@@ -908,7 +915,7 @@ function renderSummary() {
       <div class="toolbox">${tools.slice(0, 6).map(t => {
         const c = TOOLC[t.name] || "var(--muted)";
         // 도구명은 52px 칸에 들어가느라 잘린다(mcp__figma__… 처럼 긴 것들) → 행 전체에 전체 이름 툴팁
-        return `<div class="toolrow" title="${esc(t.name)} · ${t.count}회">
+        return `<div class="toolrow" data-tip="${esc(t.name)} · ${t.count}회" tabindex="0">
           <span class="n" style="color:${c}">${esc(t.name)}</span>
           <span class="track"><span class="fill" style="width:${Math.max(4, Math.round(t.count / maxTool * 100))}%;background:${c}"></span></span>
           <span class="c">${t.count}</span></div>`;
@@ -963,14 +970,14 @@ function renderSummary() {
         <div class="pane" style="gap:10px">
           <div class="sechead"><div class="seclab">산출물</div><div class="spacer"></div>
             <div class="secmeta">생성 ${files.filter(f => f.kind === "new").length} · 수정 ${files.filter(f => f.kind === "mod").length}</div></div>
-          <div class="listbox">${files.slice(0, 8).map(f => `<div class="r" title="${esc(shortPath(f.path))}">
+          <div class="listbox">${files.slice(0, 8).map(f => `<div class="r" data-tip="${esc(shortPath(f.path))}" tabindex="0">
             <span class="tag ${f.kind}">${f.kind === "new" ? "생성" : f.kind === "del" ? "삭제" : "수정"}</span>
             <span class="skname">${esc(baseName(f.path))}</span></div>`).join("")}</div>
         </div>
         <div class="pane" style="gap:10px">
           <div class="sechead"><div class="seclab">변경 핫스팟</div><div class="spacer"></div>
             <div class="secmeta">많이 고친 파일</div></div>
-          <div class="listbox">${hot.map(f => `<div class="r" title="${esc(shortPath(f.path))} · ${f.touches}회 수정">
+          <div class="listbox">${hot.map(f => `<div class="r" data-tip="${esc(shortPath(f.path))} · ${f.touches}회 수정" tabindex="0">
             <span class="sktok">×${f.touches}</span><span class="skname">${esc(baseName(f.path))}</span>
             <span class="sktok"><span style="color:var(--add)">+${f.add}</span> <span style="color:var(--del)">−${f.del}</span></span></div>`).join("")}</div>
         </div>
@@ -989,7 +996,7 @@ function agentRow(x) {
     : `<span class="astat done">완료</span>`;
   return `<div class="r">
     <span class="abadge">${x.n}</span>
-    <span class="adesc" title="${esc(x.desc)}">${esc(x.desc)}</span>
+    <span class="adesc" data-tip="${esc(x.desc)}">${esc(x.desc)}</span>
     ${x.model ? `<span class="amodel" style="color:var(--${famOf(x.model)})">${esc(shortModel(x.model))}</span>` : ""}
     ${x.tools != null ? `<span class="atools">도구 ${x.tools}</span>` : ""}
     ${stat}
@@ -1259,7 +1266,7 @@ function fileBlock(f) {
   return `<button class="fhead">
       <span class="chev">${open ? "▾" : "▸"}</span>
       <span class="tag ${f.kind}">${label}</span>
-      <span class="p${f.kind === "del" ? " gone" : ""}">${esc(shortPath(f.path))}</span>
+      <span class="p${f.kind === "del" ? " gone" : ""}" data-tip="${esc(shortPath(f.path))}">${esc(shortPath(f.path))}</span>
       <span class="n">${f.add ? `<span style="color:var(--add)">+${f.add}</span> ` : ""}${f.del ? `<span style="color:var(--del)">−${f.del}</span>` : ""}</span>
       ${f.hunks.length ? `<span class="copybtn">복사</span>` : ""}
     </button>${body}`;
@@ -1487,7 +1494,7 @@ function toolGroup(u, box) {
   box.innerHTML = `<button class="thead">
       <span class="chev">${open ? "▾" : "▸"}</span>
       <span class="cnt">도구 ${items.length}</span>
-      <span class="sum">${toolSummary(items)}</span>
+      <span class="sum" data-tip="${esc(String(toolSummary(items)).replace(/<[^>]+>/g, ""))}">${toolSummary(items)}</span>
       <span class="badge${fails ? " err" : ""}">${fails ? `실패 ${fails}` : "모두 완료"}</span>
       ${durMs > 0 ? `<span class="dur">${dur(durMs)}</span>` : ""}
     </button>
@@ -1750,7 +1757,7 @@ function railRow(r) {
   const live = sel && isLive();
   return `<div class="srow${sel ? " sel" : ""}${live ? " live" : ""}" data-id="${r.id}">
     <div class="r1">${live ? `<span class="livedot pulse" style="width:5px;height:5px;box-shadow:none"></span>` : ""}
-      <span class="nm">${esc(r.title || r.id.slice(0, 8))}</span>
+      <span class="nm" data-tip="${esc(r.title || r.id)}">${esc(r.title || r.id.slice(0, 8))}</span>
       ${sel ? `<span class="renamebtn" title="세션 이름 수정">이름 수정</span>` : ""}</div>
     <div class="ts">${esc(fmtTs(r.lastTs || new Date(r.updatedAt).toISOString()))}</div>
     <div class="r3"><span>대화 ${s.turns || 0}</span>
@@ -2105,6 +2112,54 @@ function openTweaks() {
     if (ev.key === "Escape") { el.remove(); document.removeEventListener("keydown", esc); }
   });
 }
+
+/* ── 툴팁 ─────────────────────────────────────────────── */
+// 네이티브 title 은 1초쯤 가만히 있어야 뜨고 OS 스타일이라 눈에 안 띈다.
+// data-tip 을 쓰는 요소에 즉시 뜨는 제품 톤 툴팁을 붙인다(터치·키보드 포커스도 지원).
+const tipEl = (() => {
+  const d = document.createElement("div");
+  d.id = "tip"; d.setAttribute("role", "tooltip");
+  document.body.appendChild(d);
+  return d;
+})();
+let tipTimer = null, tipHost = null;
+function showTip(host) {
+  const text = host.getAttribute("data-tip");
+  if (!text) return;
+  tipHost = host;
+  tipEl.textContent = text;
+  tipEl.classList.add("on");
+  const r = host.getBoundingClientRect();
+  const t = tipEl.getBoundingClientRect();
+  // 기본은 요소 위. 위가 좁으면 아래로 뒤집는다.
+  let top = r.top - t.height - 8;
+  if (top < 8) top = r.bottom + 8;
+  let left = r.left;
+  if (left + t.width > window.innerWidth - 10) left = window.innerWidth - t.width - 10;
+  tipEl.style.left = Math.max(10, left) + "px";
+  tipEl.style.top = top + "px";
+}
+const hideTip = () => { clearTimeout(tipTimer); tipHost = null; tipEl.classList.remove("on"); };
+document.addEventListener("mouseover", (e) => {
+  const host = e.target.closest && e.target.closest("[data-tip]");
+  if (!host) return;
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => showTip(host), 120);
+});
+document.addEventListener("mouseout", (e) => {
+  if (e.target.closest && e.target.closest("[data-tip]")) hideTip();
+});
+document.addEventListener("focusin", (e) => {
+  const host = e.target.closest && e.target.closest("[data-tip]");
+  if (host) showTip(host);
+});
+document.addEventListener("focusout", hideTip);
+// 스크롤 중에도 붙어 있게 위치만 갱신 (포커스가 유발한 스크롤에 툴팁이 사라지지 않도록)
+scroller.addEventListener("scroll", () => {
+  if (!tipHost) return;
+  if (!document.contains(tipHost)) return hideTip();
+  showTip(tipHost);
+});
 
 /* ── 초기화 ───────────────────────────────────────────── */
 try { mermaid.initialize({ startOnLoad: false, theme: "dark" }); } catch {}
