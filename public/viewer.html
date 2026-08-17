@@ -32,6 +32,28 @@
   --sans:Pretendard, -apple-system, system-ui, 'Apple SD Gothic Neo', sans-serif;
   --ease:cubic-bezier(0.23, 1, 0.32, 1);
 }
+/* 브라우저에 "이 페이지는 다크"라고 알린다.
+   이게 없으면 스크롤바·체크박스·입력창을 라이트 기준으로 그려서 흰 스크롤바가 튄다. */
+:root{color-scheme:dark}
+
+/* 스크롤바 — 팔레트에 맞춘 얇은 형태. 트랙은 비우고 손잡이만 보이게 한다.
+   표준 속성(scrollbar-color/width)이 있으면 Chrome 은 아래 ::-webkit-scrollbar 를 무시한다.
+   webkit 블록은 표준 속성을 아직 모르는 구버전 Safari 용 대비책이다. */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;
+  border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
+@media (hover:hover) and (pointer:fine){
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted-2);background-clip:padding-box}
+}
+/* Firefox 및 표준 속성 */
+:root{scrollbar-color:var(--line) transparent;scrollbar-width:thin}
+/* 세션 목록·패널은 폭이 좁으니 더 얇게 */
+.raillist::-webkit-scrollbar,.tweaks::-webkit-scrollbar,.projmenu::-webkit-scrollbar{width:8px}
+.raillist::-webkit-scrollbar-thumb,.tweaks::-webkit-scrollbar-thumb,
+.projmenu::-webkit-scrollbar-thumb{border-width:2px}
+
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-size:calc(14.5px * var(--fs) * var(--fs-ui,1));line-height:1.7;font-family:var(--sans);
