@@ -110,6 +110,23 @@ rm /usr/local/bin/cw            # 심볼릭 링크를 만들었다면
 
 `~/.claude/settings.json` 의 `statusLine` 항목도 지우세요.
 
+### 개발 시 주의점
+
+- **statusLine 이 서버를 자동으로 되살린다.** 포트 4317 이 비면 `bin/statusline.sh` 가 서버를 띄우는데,
+  그 서버는 `CW_DEV` 없이 떠서 HTML 을 메모리에 캐시한다 → 뷰어를 고쳐도 화면이 안 바뀐다.
+  `lsof -ti:4317 | xargs kill` 후 `CW_DEV=1 node server.mjs` 로 다시 띄울 것
+- **의존성 0 을 유지한다.** `package.json` 도 없다. 받아서 바로 실행되는 게 이 도구의 장점이다
+- **원본 세션 로그는 읽기 전용.** 수정·삭제하지 않는다
+- 글자 크기는 뷰어의 보기 설정에서 조절한다. 코드의 px 를 직접 만지지 말 것
+  (`DEFAULT_ROLES` 상수가 기본 배율)
+
+## 기여 · 작업 규칙
+
+- 브랜치: `<이름>-yymmdd-N` (예: `glen-260818-1`). `main` 직접 커밋은 하지 않는다
+- 커밋: Conventional Commits + 한국어 본문 (`fix(viewer): …`, `feat(export): …`)
+- 머지: 작업 브랜치 → PR → 머지
+- 주석은 한국어
+
 ## 라이선스
 
 [MIT](LICENSE) — 자유롭게 쓰고 고치고 배포하세요. 저작권 표시만 남겨주시면 됩니다.
