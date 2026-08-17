@@ -687,18 +687,27 @@ const ROLES = [
   ]],
 ];
 const ROLE_STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6];
+// 기본 배율 — 직접 맞춘 값을 그대로 기본으로 쓴다(다른 브라우저·다른 기기에서도 같은 크기).
+// 배율 1 인 것(모델 칩·시각·SYS·도구 그룹·서브에이전트)은 적지 않는다.
+const DEFAULT_ROLES = {
+  "chat-name": 1.25, "chat-body": 1.1, "chat-user": 1.1, "chat-ask": 1.1,
+  "sum-head": 1.25, "sum-bullet": 1.1, "sum-label": 1.1, "code": 0.9,
+  "hero": 1.1, "rail": 1.1, "ui": 1.1,
+};
+const roleMul = (k) => tweaks.roles[k] ?? DEFAULT_ROLES[k] ?? 1;
 
 const WIDTHS = [[960, "좁게"], [1280, "기본"], [1600, "넓게"], [0, "제한 없음"]];
-let tweaks = Object.assign({ fs: 1, width: 1280, roles: {} }, store.get("tweaks", {}));
-if (!tweaks.roles) tweaks.roles = {};
+const savedTweaks = store.get("tweaks", {});
+let tweaks = Object.assign({ fs: 1, width: 1280 }, savedTweaks);
+tweaks.roles = Object.assign({}, DEFAULT_ROLES, savedTweaks.roles || {});
 function applyTweaks() {
   const r = document.documentElement;
   r.style.setProperty("--fs", String(tweaks.fs));
   r.style.setProperty("--content-max", tweaks.width ? tweaks.width + "px" : "none");
   // 요소별 배율 — 전체 배율에 곱해진다. 기본값 1은 굳이 심지 않는다.
   for (const [, list] of ROLES) for (const [key] of list) {
-    const v = tweaks.roles[key];
-    if (v && v !== 1) r.style.setProperty("--fs-" + key, String(v));
+    const v = roleMul(key);
+    if (v !== 1) r.style.setProperty("--fs-" + key, String(v));
     else r.style.removeProperty("--fs-" + key);
   }
 }
@@ -2005,7 +2014,8 @@ function openTweaks() {
   const draw = () => {
     const pct = Math.round(tweaks.fs * 100);
     const i = FS_STEPS.indexOf(tweaks.fs);
-    const changed = Object.entries(tweaks.roles).filter(([, v]) => v && v !== 1).length;
+    // "변경됨" 은 기본 배율과 다른 것만 센다
+    const changed = ROLES.flatMap(([, l]) => l).filter(([k]) => roleMul(k) !== (DEFAULT_ROLES[k] || 1)).length;
     el.innerHTML = `<div class="hd">보기 설정</div>
       <div class="row">
         <div class="rl"><span class="n">전체 글자 크기</span><span class="v">${pct}%</span></div>
@@ -2024,12 +2034,13 @@ function openTweaks() {
       <details class="rolebox" ${changed ? "open" : ""}>
         <summary>요소별 크기 <span class="cnt">${changed ? changed + "개 변경됨" : "전체 기본"}</span></summary>
         ${ROLES.map(([group, list]) => `<div class="rgrp">${esc(group)}</div>` + list.map(([key, label, base]) => {
-          const mul = tweaks.roles[key] || 1;
+          const mul = roleMul(key);
           const px = Math.round(base * tweaks.fs * mul * 10) / 10;
           const ri = ROLE_STEPS.indexOf(mul);
+          const isDefault = mul === (DEFAULT_ROLES[key] || 1);
           return `<div class="rrow">
             <span class="rn">${esc(label)}</span>
-            <span class="rv${mul !== 1 ? " on" : ""}">${px}px</span>
+            <span class="rv${isDefault ? "" : " on"}">${px}px</span>
             <button class="rb" data-role="${key}" data-d="-1" ${ri <= 0 ? "disabled" : ""} aria-label="${esc(label)} 작게">−</button>
             <button class="rb" data-role="${key}" data-d="1" ${ri >= ROLE_STEPS.length - 1 ? "disabled" : ""} aria-label="${esc(label)} 크게">+</button>
           </div>`;
@@ -2053,13 +2064,13 @@ function openTweaks() {
     });
     el.querySelectorAll(".rb").forEach(b => b.onclick = () => {
       const key = b.dataset.role;
-      const cur = tweaks.roles[key] || 1;
+      const cur = roleMul(key);
       const n = ROLE_STEPS.indexOf(cur) + Number(b.dataset.d);
       if (n < 0 || n >= ROLE_STEPS.length) return;
       tweaks.roles[key] = ROLE_STEPS[n];
       save(true);
     });
-    $("twReset").onclick = () => { tweaks = { fs: 1, width: 1280, roles: {} }; save(); };
+    $("twReset").onclick = () => { tweaks = { fs: 1, width: 1280, roles: Object.assign({}, DEFAULT_ROLES) }; save(); };
   };
 
   const save = (keepOpen) => {
