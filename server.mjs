@@ -21,6 +21,7 @@ import {
   completedAgentIds,
 } from "./lib/parse.mjs";
 import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
+import { lightenEvents, lightenAgg } from "./lib/lighten.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -553,6 +554,13 @@ const server = http.createServer(async (req, res) => {
         masked = { total: Object.values(counts).reduce((s, n) => s + n, 0), counts };
       }
 
+      // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
+      //   기본(full)   : 뷰어가 안 그리는 6000자 뒤만 잘라낸다 → 보이는 것이 달라지지 않는다
+      //   light        : 도구 결과를 알아볼 만큼만 남긴다 → 남에게 보낼 크기
+      const mode = url.searchParams.get("light") === "1" ? "light" : "full";
+      const lt = lightenEvents(out.events, mode);
+      out = { ...out, events: lt.events, agg: lightenAgg(out.agg, mode, lt.counts), light: mode };
+
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // </script> 만 닫힘 방지로 이스케이프.
       const dataJson = JSON.stringify(out).replace(/<\/script>/gi, "<\\/script>");
@@ -584,6 +592,7 @@ const server = http.createServer(async (req, res) => {
         ok: true, file: fname, dir, path: fpath,
         hasAI: { summary: !!cache.summary, diagram: !!cache.diagram },
         masked: doMask ? masked : null,
+        light: { mode, ...lt.counts, bytes: Buffer.byteLength(html) },
       }));
     } catch (e) {
       return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));

@@ -67,7 +67,7 @@ ln -s "$PWD/bin/cw" /usr/local/bin/cw
 | `GET /api/index` | 세션 색인(JSON) |
 | `GET /api/session/:id` | 이벤트 + 집계(JSON) |
 | `GET /events/:id` | SSE — `init` 1회 후 `patch`(변경분만) |
-| `GET /export/:id` | 자체완결 HTML 저장. `?dir=&name=&mask=1` |
+| `GET /export/:id` | 자체완결 HTML 저장. `?dir=&name=&mask=1&light=1` |
 | `GET /api/ai/summary\|diagram/:id` | AI 요약·다이어그램 생성(`claude -p`, 별도 키 불필요) |
 | `GET /vendor/:file` | 뷰어가 쓰는 로컬 자산(마크다운·코드색·다이어그램·폰트) |
 | `POST /api/diagram-svg/:id` | 뷰어가 그린 다이어그램 SVG를 캐시에 저장(내보내기용) |
@@ -88,6 +88,19 @@ ln -s "$PWD/bin/cw" /usr/local/bin/cw
 본문 한글 폰트(Pretendard)는 싣지 않습니다. 한글 글리프 전체는 4종 합쳐 2.6MB라
 "메신저로 보낼 수 있는 파일"과 맞지 않습니다. 설치돼 있으면 그대로 쓰고,
 없으면 OS 기본 한글 폰트로 떨어집니다.
+
+### 내보내기 용량
+
+파일 용량의 대부분은 대화가 아니라 **도구 실행 결과 본문**입니다.
+실측(831 이벤트) 기준 `tool_use.result` 가 80.4%, `tool_use.input` 이 9.8%였습니다.
+
+| 모드 | 크기 | 무엇이 달라지나 |
+|---|---|---|
+| 기본 | 2.48 MB | **화면상 차이 없음.** 뷰어가 도구 결과를 6000자까지만 그리므로, 그 뒤는 어차피 안 보인다 |
+| 경량 | 1.31 MB | 도구 결과 800자·입력 400자·diff 40줄까지. 잘린 자리에 `… 원본에서 잘림 (전체 N자)` 표시 |
+
+경량을 더 조여도 이득이 적습니다 — 남은 용량은 뷰어 껍데기 329KB(코드 하이라이팅 122KB 포함)와
+실제 대화 본문이라, 여기서 더 줄이려면 기능이나 내용을 버려야 합니다.
 
 ## 설치되는 것 / 만들어지는 것
 
