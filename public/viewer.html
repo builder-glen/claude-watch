@@ -100,6 +100,12 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .btn-export{font-family:var(--mono);padding:8px 14px;border-radius:8px;background:var(--accent);
   color:#2c1a26;font-size:calc(13px * var(--fs) * var(--fs-hero,1));font-weight:700;transition:transform 160ms var(--ease)}
 .btn-export:active{transform:scale(0.97)}
+/* 이어하기 — Export 옆에 두되 주 동작은 아니므로 테두리 버튼으로 한 단계 낮춘다 */
+.btn-resume{font-family:var(--mono);padding:8px 14px;border-radius:8px;background:var(--card);
+  border:1px solid var(--line);color:var(--ink-2);font-size:calc(13px * var(--fs) * var(--fs-hero,1));
+  font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
+.btn-resume:hover{border-color:var(--sess);color:var(--ink)}
+.btn-resume:active{transform:scale(0.97)}
 .btn-export[disabled]{background:var(--card);border:1px solid var(--line);color:var(--muted-2);cursor:default}
 
 /* 모델 칩 */
@@ -862,10 +868,31 @@ function renderHero() {
     metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`),
     `<div class="vr"></div>`,
     metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`),
+    `<button class="btn-resume" id="resumeBtn" data-tip="${esc(resumeCmd())}">이어하기</button>`,
     `<button class="btn-export" id="exportBtn">Export</button>`,
   ].join("");
-  if (EXPORT) $("exportBtn").remove();
-  else $("exportBtn").onclick = doExport;
+  // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
+  if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
+  else {
+    $("exportBtn").onclick = doExport;
+    $("resumeBtn").onclick = copyResume;
+  }
+}
+
+// 이 도구를 만든 첫 번째 이유가 "탭을 실수로 닫았을 때 찾기"인데, 찾고 나서 돌아갈
+// 방법이 없었다. 세션은 프로젝트 디렉터리 기준으로 관리되므로 cd 까지 붙여야 한다.
+function resumeCmd() {
+  const cwd = (SESS && SESS.cwd) || "";
+  return (cwd ? `cd ${shq(cwd)} && ` : "") + `claude --resume ${SESSION}`;
+}
+// 경로에 공백·따옴표가 있어도 셸에서 한 덩어리로 읽히도록 작은따옴표로 감싼다.
+const shq = (s) => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
+
+function copyResume() {
+  const cmd = resumeCmd();
+  const done = () => flash("복사됨 · 터미널에 붙여넣으세요");
+  if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(done, () => prompt("복사해서 터미널에 붙여넣으세요", cmd));
+  else prompt("복사해서 터미널에 붙여넣으세요", cmd);
 }
 const metric = (lab, val) => `<div class="metric"><div class="lab">${lab}</div><div class="val">${val}</div></div>`;
 
