@@ -112,18 +112,36 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   border-radius:8px;background:var(--card)}
 .cfgsum{flex:1;min-width:0;font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.presets{display:flex;flex-wrap:wrap;gap:6px}
-.presets button{font-family:var(--mono);font-size:calc(12px * var(--fs) * var(--fs-ui,1));
-  padding:7px 11px;border-radius:7px;background:var(--card);border:1px solid var(--line);color:var(--ink-2)}
-.presets button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+/* 설정창 — 화면 구조(상단바/탭/요약/대화/파일)와 같은 묶음으로 나열한다 */
+.sheet.wide{max-width:760px;width:calc(100vw - 48px)}
+.cfggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.cfggroup{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--card)}
+.cfgh{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-family:var(--mono);font-weight:700;
+  font-size:calc(11.5px * var(--fs) * var(--fs-ui,1));color:var(--ink);letter-spacing:.04em}
+.allbtn{margin-left:auto;font-family:var(--mono);font-size:calc(10.5px * var(--fs) * var(--fs-ui,1));
+  color:var(--muted);padding:3px 7px;border-radius:6px;border:1px solid var(--line);background:none}
+.allbtn:hover{color:var(--ink-2);border-color:var(--muted-2)}
+.ckl{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;
+  font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));color:var(--ink-2)}
+.ckl input{flex-shrink:0}
 
 /* 미리보기 — 설정대로 뺐을 때의 화면. 실제 내보내기는 데이터를 지우지만
    미리보기는 되돌려야 하므로 CSS 로만 가린다. */
-body.pv-tools .tdetail,body.pv-tools .titem .ar{display:none}
-body.pv-cost .meta .tok,body.pv-cost .metric:nth-child(5),body.pv-cost .atok{display:none}
-body.pv-model .mchip,body.pv-model .plusmodels,body.pv-model .switchmark,body.pv-model .amodel{display:none}
-body.pv-sys .sysnote,body.pv-sys .sysbody{display:none}
-body.pv-agents .agentcard,body.pv-agents .metric:nth-child(3){display:none}
+body.pv-hero-turns   .metric:nth-child(1){display:none}
+body.pv-hero-agents  .metric:nth-child(3){display:none}
+body.pv-hero-cost    .metric:nth-child(5){display:none}
+body.pv-hero-diff    .metric:nth-child(7){display:none}
+body.pv-tab-summary  [data-tab="summary"],
+body.pv-tab-arch     [data-tab="arch"],
+body.pv-tab-changes  [data-tab="changes"],
+body.pv-tab-raw      [data-tab="raw"]{display:none}
+body.pv-chat-tools .tdetail,body.pv-chat-tools .titem .ar{display:none}
+body.pv-chat-think .think{display:none}
+body.pv-chat-sys   .sysnote,body.pv-chat-sys .sysbody{display:none}
+body.pv-chat-model .mchip,body.pv-chat-model .plusmodels,body.pv-chat-model .switchmark,body.pv-chat-model .amodel{display:none}
+body.pv-chat-tok   .meta .tok,body.pv-chat-tok .atok{display:none}
+body.pv-sum-skills .skl,body.pv-sum-tools .toolrow,
+body.pv-sum-agents .agentcard,body.pv-sum-models .legend,body.pv-sum-files .filepill{display:none}
 .pvbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;align-items:center;gap:14px;
   justify-content:center;padding:11px 16px;background:var(--accent-bg);border-top:1px solid var(--accent);
   font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));color:var(--accent-ink)}
@@ -883,17 +901,17 @@ function renderHero() {
   for (const f of (AGG.files || [])) { add += f.add || 0; del += f.del || 0; }
   const agents = (AGG.agents || []).length;
 
-  $("metrics").innerHTML = [
-    metric("주고받은 대화", `<span class="num">${AGG.turns || 0}</span><span class="unit">회</span>`),
-    `<div class="vr"></div>`,
-    metric("서브에이전트", `<span class="num" style="color:var(--agent)">${agents}</span><span class="unit">개</span>`),
-    `<div class="vr"></div>`,
-    metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`),
-    `<div class="vr"></div>`,
-    metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`),
-    `<button class="btn-resume" id="resumeBtn" data-tip="${esc(resumeCmd())}">이어하기</button>`,
-    `<button class="btn-export" id="exportBtn">Export</button>`,
-  ].join("");
+  // 설정에서 끈 지표는 구분선까지 같이 빠져야 선이 두 개 붙어 보이지 않는다.
+  const cells = [
+    ["hero.turns",  metric("주고받은 대화", `<span class="num">${AGG.turns || 0}</span><span class="unit">회</span>`)],
+    ["hero.agents", metric("서브에이전트", `<span class="num" style="color:var(--agent)">${agents}</span><span class="unit">개</span>`)],
+    ["hero.cost",   metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`)],
+    ["hero.diff",   metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`)],
+  ].filter(([k]) => exShow(k)).map(([, html]) => html);
+
+  $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
+    + `<button class="btn-resume" id="resumeBtn" data-tip="${esc(resumeCmd())}">이어하기</button>`
+    + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
   else {
@@ -933,12 +951,16 @@ function sessionTitle() {
 }
 
 /* ── 탭 ───────────────────────────────────────────────── */
+// 내보낸 파일은 설정에서 끈 요소를 아예 갖고 있지 않다. 탭·지표도 그에 맞춰 지운다.
+// (실시간 뷰어에는 EXPORT 가 없으므로 항상 전부 보인다.)
+const exShow = (k) => !(EXPORT && EXPORT.show && EXPORT.show[k] === false);
+
 const TABS = [
   { id: "summary", label: "요약",  render: renderSummary },
   { id: "arch",    label: "구조",  render: renderArch },
   { id: "changes", label: "변경",  render: renderChanges },
   { id: "raw",     label: "대화",  render: renderChat },
-];
+].filter((t) => exShow("tab." + t.id));
 function renderTabs() {
   $("tabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.id}" class="${t.id === TAB ? "on" : ""}">${t.label}</button>`).join("");
@@ -2027,50 +2049,39 @@ let exportDefaults = null;
    내보낼 때마다 체크박스를 다시 고르는 건 좋은 UX 가 아니다.
    한 번 정해 ~/.claude-watch/export-config.json 에 저장하고, 내보내기는 그걸 참조만 한다.
    설정을 "숨김"으로 표현하지만 실제로는 데이터에서 뺀다(서버의 applyHide). */
-let exportCfg = null, exportPresets = null;
-
-const HIDE_LABELS = {
-  tools:  ["도구 실행 로그", "무엇을 실행했는지는 남기고 결과 본문만 뺍니다"],
-  cost:   ["토큰·비용", "쓴 토큰 수와 금액을 뺍니다"],
-  model:  ["모델 표시", "어떤 모델이 답했는지 뺍니다"],
-  sys:    ["시스템 메시지", "스킬 주입·훅 안내 등 사람이 쓰지 않은 줄을 뺍니다"],
-  agents: ["서브에이전트", "병렬로 돈 에이전트 목록을 뺍니다"],
-};
+let exportCfg = null, exportElements = null;
 
 async function loadExportCfg() {
   if (exportCfg) return exportCfg;
   try {
     const d = await (await fetch("/api/export-config")).json();
-    exportCfg = d.config; exportPresets = d.presets;
-  } catch {
-    exportCfg = { preset: "reader", mask: true, light: true,
-      hide: { tools: false, cost: false, model: false, sys: false, agents: false } };
-    exportPresets = {};
-  }
+    exportCfg = d.config; exportElements = d.elements;
+  } catch { exportCfg = { show: {} }; exportElements = []; }
   return exportCfg;
 }
+const shown = (c, k) => (c.show || {})[k] !== false;
 
-// 다이얼로그에 한 줄로 보여줄 요약
+// 다이얼로그에 한 줄로 보여줄 요약 — 끈 것만 말한다(켠 게 기본이므로).
 function cfgSummary(c) {
-  const preset = (exportPresets && exportPresets[c.preset]) ? exportPresets[c.preset].label : "직접 설정";
-  const on = [];
-  if (c.mask) on.push("마스킹");
-  if (c.light) on.push("경량");
-  const hidden = Object.entries(c.hide || {}).filter(([, v]) => v).map(([k]) => HIDE_LABELS[k][0]);
-  if (hidden.length) on.push(`${hidden.length}개 항목 뺌`);
-  return `<b>${esc(preset)}</b>${on.length ? " · " + esc(on.join(" · ")) : ""}`;
+  const off = [];
+  for (const [, list] of (exportElements || [])) for (const [k, lab] of list) if (!shown(c, k)) off.push(lab);
+  if (!off.length) return `<b>전부 포함</b>`;
+  const head = off.slice(0, 3).join(" · ");
+  return `<b>${off.length}개 항목 뺌</b> <span class="sd">${esc(head)}${off.length > 3 ? ` 외 ${off.length - 3}개` : ""}</span>`;
 }
 
 // 미리보기: 설정대로 뺐을 때 화면이 어떻게 보이는지 뷰어에 임시로 입힌다.
 // 실제 내보내기는 데이터를 지우지만, 미리보기는 되돌려야 하므로 CSS 로만 가린다.
-function applyPreview(hide) {
+// 클래스 이름은 요소 키에서 만든다: "chat.tools" → "pv-chat-tools"
+const pvClass = (k) => "pv-" + k.replace(".", "-");
+function applyPreview(c) {
   const b = document.body;
-  for (const k of Object.keys(HIDE_LABELS)) b.classList.toggle("pv-" + k, !!hide[k]);
+  for (const [, list] of (exportElements || [])) for (const [k] of list) b.classList.toggle(pvClass(k), !shown(c, k));
   b.classList.add("previewing");
 }
 function clearPreview() {
   const b = document.body;
-  for (const k of Object.keys(HIDE_LABELS)) b.classList.remove("pv-" + k);
+  [...b.classList].filter((x) => x.startsWith("pv-")).forEach((x) => b.classList.remove(x));
   b.classList.remove("previewing");
 }
 
@@ -2082,27 +2093,21 @@ function openExportCfg(onDone) {
   const c = JSON.parse(JSON.stringify(exportCfg));   // 취소하면 버릴 사본
 
   const draw = () => {
-    dlg.innerHTML = `<div class="sheet">
+    const total = (exportElements || []).reduce((n, [, l]) => n + l.length, 0);
+    const onCount = (exportElements || []).reduce((n, [, l]) => n + l.filter(([k]) => shown(c, k)).length, 0);
+    dlg.innerHTML = `<div class="sheet wide">
       <div class="sh">내보내기 설정</div>
-      <div class="sd">한 번 정해두면 다음 내보내기부터 그대로 쓰입니다. 여기서 뺀 항목은
-        화면에서 가려지는 게 아니라 <b>파일에서 실제로 빠집니다.</b></div>
-      <label class="fl">누구에게 보내나요?</label>
-      <div class="presets">${Object.entries(exportPresets || {}).map(([k, p]) =>
-        `<button data-preset="${k}" class="${c.preset === k ? "on" : ""}">${esc(p.label)}</button>`).join("")
-        + `<button data-preset="custom" class="${c.preset === "custom" ? "on" : ""}">직접 고르기</button>`}</div>
-      <label class="ck"><input type="checkbox" id="cfgMask" ${c.mask ? "checked" : ""} />
-        <span><b>민감 정보 마스킹</b>
-        <span class="sd">API 키·토큰·비밀번호·개인키를 <span class="icode">••••</span>로 가립니다.</span></span></label>
-      <label class="ck"><input type="checkbox" id="cfgLight" ${c.light ? "checked" : ""} />
-        <span><b>경량으로 내보내기</b>
-        <span class="sd">도구 결과 본문을 줄여 파일을 작게 만듭니다. 잘린 자리에 표시가 남습니다.</span></span></label>
-      <label class="fl">뺄 항목</label>
-      ${Object.entries(HIDE_LABELS).map(([k, [lab, desc]]) =>
-        `<label class="ck"><input type="checkbox" data-hide="${k}" ${c.hide[k] ? "checked" : ""} />
-          <span><b>${esc(lab)}</b><span class="sd">${esc(desc)}</span></span></label>`).join("")}
+      <div class="sd">화면에 있는 요소를 그대로 켜고 끕니다. 끈 항목은 가려지는 게 아니라
+        <b>파일에서 실제로 빠집니다.</b> 한 번 정해두면 다음 내보내기부터 그대로 쓰입니다.</div>
+      <div class="cfggrid">${(exportElements || []).map(([group, list]) => `
+        <div class="cfggroup">
+          <div class="cfgh">${esc(group)}
+            <button class="allbtn" data-group="${esc(group)}">${list.every(([k]) => shown(c, k)) ? "모두 끄기" : "모두 켜기"}</button></div>
+          ${list.map(([k, lab]) => `<label class="ckl"><input type="checkbox" data-el="${k}" ${shown(c, k) ? "checked" : ""} /><span>${esc(lab)}</span></label>`).join("")}
+        </div>`).join("")}</div>
       <div class="acts">
         <button class="btn-sec" id="cfgPreview">👁 미리보기</button>
-        <div style="flex:1"></div>
+        <div class="sd" style="flex:1">${onCount}/${total} 포함</div>
         <button class="btn-sec" id="cfgCancel">취소</button>
         <button class="btn-primary" id="cfgSave">저장</button>
       </div>
@@ -2111,27 +2116,21 @@ function openExportCfg(onDone) {
     bind();
   };
 
-  const markCustom = () => { c.preset = "custom"; };
-
   const bind = () => {
-    dlg.querySelectorAll("[data-preset]").forEach((b) => b.onclick = () => {
-      const k = b.dataset.preset;
-      c.preset = k;
-      if (k !== "custom" && exportPresets[k]) {
-        const p = exportPresets[k];
-        c.mask = p.mask; c.light = p.light; c.hide = { ...p.hide };
-      }
-      draw();
+    dlg.querySelectorAll("[data-el]").forEach((b) => b.onchange = () => {
+      c.show = c.show || {}; c.show[b.dataset.el] = b.checked; draw();
     });
-    $("cfgMask").onchange = (e) => { c.mask = e.target.checked; markCustom(); draw(); };
-    $("cfgLight").onchange = (e) => { c.light = e.target.checked; markCustom(); draw(); };
-    dlg.querySelectorAll("[data-hide]").forEach((b) => b.onchange = () => {
-      c.hide[b.dataset.hide] = b.checked; markCustom(); draw();
+    dlg.querySelectorAll("[data-group]").forEach((b) => b.onclick = () => {
+      const list = (exportElements.find(([g]) => g === b.dataset.group) || [null, []])[1];
+      const turnOff = list.every(([k]) => shown(c, k));
+      c.show = c.show || {};
+      for (const [k] of list) c.show[k] = !turnOff;
+      draw();
     });
     $("cfgCancel").onclick = () => { clearPreview(); dlg.remove(); };
     $("cfgPreview").onclick = () => {
-      // 패널을 숨겨 뷰어를 그대로 보여주고, 아무 곳이나 누르면 돌아온다.
-      applyPreview(c.hide);
+      // 패널을 숨겨 뷰어를 그대로 보여주고, 돌아가기를 누르면 원상복구된다.
+      applyPreview(c);
       dlg.style.display = "none";
       const back = document.createElement("div");
       back.className = "pvbar";

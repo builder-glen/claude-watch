@@ -21,7 +21,7 @@ import {
   completedAgentIds,
 } from "./lib/parse.mjs";
 import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
-import { lightenEvents, lightenAgg, applyHide, DEFAULT_EXPORT_CONFIG, PRESETS } from "./lib/lighten.mjs";
+import { lightenEvents, lightenAgg, applyVisibility, DEFAULT_EXPORT_CONFIG, ELEMENTS, ALL_KEYS } from "./lib/lighten.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -429,16 +429,12 @@ const server = http.createServer(async (req, res) => {
       let cfg;
       try { cfg = JSON.parse(body); } catch { return send(res, 400, "application/json", JSON.stringify({ error: "bad json" })); }
       // 알 수 없는 키가 섞여 들어오지 않도록 형태를 맞춰 저장한다.
-      const clean = {
-        preset: String(cfg.preset || DEFAULT_EXPORT_CONFIG.preset),
-        mask: !!cfg.mask, light: !!cfg.light,
-        hide: Object.fromEntries(Object.keys(DEFAULT_EXPORT_CONFIG.hide).map((k) => [k, !!(cfg.hide || {})[k]])),
-      };
+      const clean = { show: Object.fromEntries(ALL_KEYS.map((k) => [k, (cfg.show || {})[k] !== false])) };
       await writeJson(EXPORT_CONFIG_PATH, clean);
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ ok: true, config: clean }));
     }
     const cfg = await readJson(EXPORT_CONFIG_PATH, DEFAULT_EXPORT_CONFIG);
-    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ config: cfg, presets: PRESETS }));
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ config: cfg, elements: ELEMENTS }));
   }
 
   // 뷰어가 다이어그램을 그리고 나면 그 SVG를 캐시에 얹어둔다.
@@ -553,9 +549,8 @@ const server = http.createServer(async (req, res) => {
         const v = url.searchParams.get(k);
         return v == null ? fallback : v === "1";
       };
-      const doMask = q("mask", !!saved.mask);
-      const hide = Object.fromEntries(Object.keys(DEFAULT_EXPORT_CONFIG.hide)
-        .map((k) => [k, q("hide_" + k, !!(saved.hide || {})[k])]));
+      const show = Object.fromEntries(ALL_KEYS.map((k) => [k, q("show_" + k, (saved.show || {})[k] !== false)]));
+      const doMask = show["file.mask"];
       const cache = {};
       for (const kind of ["summary", "diagram"]) {
         let c = await readCache(id, kind);
@@ -591,12 +586,12 @@ const server = http.createServer(async (req, res) => {
       // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
       //   기본(full)   : 뷰어가 안 그리는 6000자 뒤만 잘라낸다 → 보이는 것이 달라지지 않는다
       //   light        : 도구 결과를 알아볼 만큼만 남긴다 → 남에게 보낼 크기
-      const mode = q("light", !!saved.light) ? "light" : "full";
+      const mode = show["file.light"] ? "light" : "full";
       const lt = lightenEvents(out.events, mode);
       out = { ...out, events: lt.events, agg: lightenAgg(out.agg, mode, lt.counts), light: mode };
       // 설정에서 끈 항목은 화면에서 가리는 게 아니라 데이터에서 뺀다(소스 보기로도 안 보이도록).
-      out = applyHide(out, hide, lt.counts);
-      out.hidden = hide;
+      out = applyVisibility(out, show, lt.counts);
+      out.show = show;
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // </script> 만 닫힘 방지로 이스케이프.
