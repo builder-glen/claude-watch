@@ -40,6 +40,7 @@ cache/
 index.json
 aliases.json
 project-overrides.json
+export-config.json
 statusline-input.json
 
 # 자격증명

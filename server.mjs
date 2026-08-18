@@ -21,7 +21,7 @@ import {
   completedAgentIds,
 } from "./lib/parse.mjs";
 import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
-import { lightenEvents, lightenAgg } from "./lib/lighten.mjs";
+import { lightenEvents, lightenAgg, applyHide, DEFAULT_EXPORT_CONFIG, PRESETS } from "./lib/lighten.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -164,6 +164,7 @@ async function writeCache(id, kind, data) {
 const INDEX_PATH = join(CW_DIR, "index.json");
 const ALIAS_PATH = join(CW_DIR, "aliases.json"); // 사용자가 수정한 제목(영구, 색인 갱신에도 안 덮임)
 const PROJECT_OVERRIDE_PATH = join(CW_DIR, "project-overrides.json"); // 사용자가 재지정한 프로젝트(영구, 원본 로그 불변)
+const EXPORT_CONFIG_PATH = join(CW_DIR, "export-config.json"); // 내보내기 기본 설정(한 번 정해두고 재사용)
 async function readJson(p, def) { try { return JSON.parse(await readFile(p, "utf8")); } catch { return def; } }
 async function writeJson(p, o) { try { await mkdir(CW_DIR, { recursive: true }); await writeFile(p, JSON.stringify(o)); } catch {} }
 
@@ -354,7 +355,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
-  if ((MUTATING.test(path) || path === "/api/pick-folder") && !sameOriginOnly(req))
+  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config") && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // 개발 모드면 매 요청마다 뷰어/리스트 HTML을 다시 읽어 즉시 반영(서버 재시작 불필요)
@@ -414,6 +415,30 @@ const server = http.createServer(async (req, res) => {
     if (project) ov[id] = project; else delete ov[id];
     await writeJson(PROJECT_OVERRIDE_PATH, ov);
     return send(res, 200, "application/json", JSON.stringify({ ok: true, id, project }));
+  }
+
+  // 내보내기 설정 — 내보낼 때마다 체크박스를 다시 고르지 않도록 한 번 정해두고 재사용한다.
+  // 저장 위치는 다른 사용자 설정과 같은 ~/.claude-watch/ 아래.
+  if (path === "/api/export-config") {
+    if (req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 100_000) return send(res, 413, "application/json", JSON.stringify({ error: "too large" }));
+      }
+      let cfg;
+      try { cfg = JSON.parse(body); } catch { return send(res, 400, "application/json", JSON.stringify({ error: "bad json" })); }
+      // 알 수 없는 키가 섞여 들어오지 않도록 형태를 맞춰 저장한다.
+      const clean = {
+        preset: String(cfg.preset || DEFAULT_EXPORT_CONFIG.preset),
+        mask: !!cfg.mask, light: !!cfg.light,
+        hide: Object.fromEntries(Object.keys(DEFAULT_EXPORT_CONFIG.hide).map((k) => [k, !!(cfg.hide || {})[k]])),
+      };
+      await writeJson(EXPORT_CONFIG_PATH, clean);
+      return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ ok: true, config: clean }));
+    }
+    const cfg = await readJson(EXPORT_CONFIG_PATH, DEFAULT_EXPORT_CONFIG);
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ config: cfg, presets: PRESETS }));
   }
 
   // 뷰어가 다이어그램을 그리고 나면 그 SVG를 캐시에 얹어둔다.
@@ -521,7 +546,16 @@ const server = http.createServer(async (req, res) => {
       const payload = await sessionPayload(sess);
       const events = payload.events;
       const refresh = url.searchParams.get("refresh") === "1";
-      const doMask = url.searchParams.get("mask") === "1";
+      // 설정은 저장된 export-config.json 을 기본으로 쓴다.
+      // 쿼리로 넘어오면 그것이 이긴다(설정창 미리보기·기존 링크 호환).
+      const saved = await readJson(EXPORT_CONFIG_PATH, DEFAULT_EXPORT_CONFIG);
+      const q = (k, fallback) => {
+        const v = url.searchParams.get(k);
+        return v == null ? fallback : v === "1";
+      };
+      const doMask = q("mask", !!saved.mask);
+      const hide = Object.fromEntries(Object.keys(DEFAULT_EXPORT_CONFIG.hide)
+        .map((k) => [k, q("hide_" + k, !!(saved.hide || {})[k])]));
       const cache = {};
       for (const kind of ["summary", "diagram"]) {
         let c = await readCache(id, kind);
@@ -557,9 +591,12 @@ const server = http.createServer(async (req, res) => {
       // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
       //   기본(full)   : 뷰어가 안 그리는 6000자 뒤만 잘라낸다 → 보이는 것이 달라지지 않는다
       //   light        : 도구 결과를 알아볼 만큼만 남긴다 → 남에게 보낼 크기
-      const mode = url.searchParams.get("light") === "1" ? "light" : "full";
+      const mode = q("light", !!saved.light) ? "light" : "full";
       const lt = lightenEvents(out.events, mode);
       out = { ...out, events: lt.events, agg: lightenAgg(out.agg, mode, lt.counts), light: mode };
+      // 설정에서 끈 항목은 화면에서 가리는 게 아니라 데이터에서 뺀다(소스 보기로도 안 보이도록).
+      out = applyHide(out, hide, lt.counts);
+      out.hidden = hide;
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // </script> 만 닫힘 방지로 이스케이프.

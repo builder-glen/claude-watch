@@ -106,6 +106,29 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
 .btn-resume:hover{border-color:var(--sess);color:var(--ink)}
 .btn-resume:active{transform:scale(0.97)}
+
+/* 내보내기 설정 — 다이얼로그엔 요약 한 줄만, 상세는 별도 창 */
+.cfgrow{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card)}
+.cfgsum{flex:1;min-width:0;font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{font-family:var(--mono);font-size:calc(12px * var(--fs) * var(--fs-ui,1));
+  padding:7px 11px;border-radius:7px;background:var(--card);border:1px solid var(--line);color:var(--ink-2)}
+.presets button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+
+/* 미리보기 — 설정대로 뺐을 때의 화면. 실제 내보내기는 데이터를 지우지만
+   미리보기는 되돌려야 하므로 CSS 로만 가린다. */
+body.pv-tools .tdetail,body.pv-tools .titem .ar{display:none}
+body.pv-cost .meta .tok,body.pv-cost .metric:nth-child(5),body.pv-cost .atok{display:none}
+body.pv-model .mchip,body.pv-model .plusmodels,body.pv-model .switchmark,body.pv-model .amodel{display:none}
+body.pv-sys .sysnote,body.pv-sys .sysbody{display:none}
+body.pv-agents .agentcard,body.pv-agents .metric:nth-child(3){display:none}
+.pvbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;align-items:center;gap:14px;
+  justify-content:center;padding:11px 16px;background:var(--accent-bg);border-top:1px solid var(--accent);
+  font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));color:var(--accent-ink)}
+.pvbar button{font-family:var(--mono);font-size:calc(12px * var(--fs) * var(--fs-ui,1));font-weight:700;
+  padding:6px 12px;border-radius:7px;background:var(--accent);color:#2c1a26}
 .btn-export[disabled]{background:var(--card);border:1px solid var(--line);color:var(--muted-2);cursor:default}
 
 /* 모델 칩 */
@@ -2000,6 +2023,144 @@ function renderNotFound() {
 /* ── Export ───────────────────────────────────────────── */
 // 저장 위치·파일명을 정하고, 남에게 줄 파일이면 자격증명을 가릴 수 있게 한다.
 let exportDefaults = null;
+/* ── 내보내기 설정 ─────────────────────────────────────
+   내보낼 때마다 체크박스를 다시 고르는 건 좋은 UX 가 아니다.
+   한 번 정해 ~/.claude-watch/export-config.json 에 저장하고, 내보내기는 그걸 참조만 한다.
+   설정을 "숨김"으로 표현하지만 실제로는 데이터에서 뺀다(서버의 applyHide). */
+let exportCfg = null, exportPresets = null;
+
+const HIDE_LABELS = {
+  tools:  ["도구 실행 로그", "무엇을 실행했는지는 남기고 결과 본문만 뺍니다"],
+  cost:   ["토큰·비용", "쓴 토큰 수와 금액을 뺍니다"],
+  model:  ["모델 표시", "어떤 모델이 답했는지 뺍니다"],
+  sys:    ["시스템 메시지", "스킬 주입·훅 안내 등 사람이 쓰지 않은 줄을 뺍니다"],
+  agents: ["서브에이전트", "병렬로 돈 에이전트 목록을 뺍니다"],
+};
+
+async function loadExportCfg() {
+  if (exportCfg) return exportCfg;
+  try {
+    const d = await (await fetch("/api/export-config")).json();
+    exportCfg = d.config; exportPresets = d.presets;
+  } catch {
+    exportCfg = { preset: "reader", mask: true, light: true,
+      hide: { tools: false, cost: false, model: false, sys: false, agents: false } };
+    exportPresets = {};
+  }
+  return exportCfg;
+}
+
+// 다이얼로그에 한 줄로 보여줄 요약
+function cfgSummary(c) {
+  const preset = (exportPresets && exportPresets[c.preset]) ? exportPresets[c.preset].label : "직접 설정";
+  const on = [];
+  if (c.mask) on.push("마스킹");
+  if (c.light) on.push("경량");
+  const hidden = Object.entries(c.hide || {}).filter(([, v]) => v).map(([k]) => HIDE_LABELS[k][0]);
+  if (hidden.length) on.push(`${hidden.length}개 항목 뺌`);
+  return `<b>${esc(preset)}</b>${on.length ? " · " + esc(on.join(" · ")) : ""}`;
+}
+
+// 미리보기: 설정대로 뺐을 때 화면이 어떻게 보이는지 뷰어에 임시로 입힌다.
+// 실제 내보내기는 데이터를 지우지만, 미리보기는 되돌려야 하므로 CSS 로만 가린다.
+function applyPreview(hide) {
+  const b = document.body;
+  for (const k of Object.keys(HIDE_LABELS)) b.classList.toggle("pv-" + k, !!hide[k]);
+  b.classList.add("previewing");
+}
+function clearPreview() {
+  const b = document.body;
+  for (const k of Object.keys(HIDE_LABELS)) b.classList.remove("pv-" + k);
+  b.classList.remove("previewing");
+}
+
+function openExportCfg(onDone) {
+  document.getElementById("cfgdlg")?.remove();
+  const dlg = document.createElement("div");
+  dlg.id = "cfgdlg";
+  dlg.className = "modal";
+  const c = JSON.parse(JSON.stringify(exportCfg));   // 취소하면 버릴 사본
+
+  const draw = () => {
+    dlg.innerHTML = `<div class="sheet">
+      <div class="sh">내보내기 설정</div>
+      <div class="sd">한 번 정해두면 다음 내보내기부터 그대로 쓰입니다. 여기서 뺀 항목은
+        화면에서 가려지는 게 아니라 <b>파일에서 실제로 빠집니다.</b></div>
+      <label class="fl">누구에게 보내나요?</label>
+      <div class="presets">${Object.entries(exportPresets || {}).map(([k, p]) =>
+        `<button data-preset="${k}" class="${c.preset === k ? "on" : ""}">${esc(p.label)}</button>`).join("")
+        + `<button data-preset="custom" class="${c.preset === "custom" ? "on" : ""}">직접 고르기</button>`}</div>
+      <label class="ck"><input type="checkbox" id="cfgMask" ${c.mask ? "checked" : ""} />
+        <span><b>민감 정보 마스킹</b>
+        <span class="sd">API 키·토큰·비밀번호·개인키를 <span class="icode">••••</span>로 가립니다.</span></span></label>
+      <label class="ck"><input type="checkbox" id="cfgLight" ${c.light ? "checked" : ""} />
+        <span><b>경량으로 내보내기</b>
+        <span class="sd">도구 결과 본문을 줄여 파일을 작게 만듭니다. 잘린 자리에 표시가 남습니다.</span></span></label>
+      <label class="fl">뺄 항목</label>
+      ${Object.entries(HIDE_LABELS).map(([k, [lab, desc]]) =>
+        `<label class="ck"><input type="checkbox" data-hide="${k}" ${c.hide[k] ? "checked" : ""} />
+          <span><b>${esc(lab)}</b><span class="sd">${esc(desc)}</span></span></label>`).join("")}
+      <div class="acts">
+        <button class="btn-sec" id="cfgPreview">👁 미리보기</button>
+        <div style="flex:1"></div>
+        <button class="btn-sec" id="cfgCancel">취소</button>
+        <button class="btn-primary" id="cfgSave">저장</button>
+      </div>
+      <div class="sd" id="cfgMsg"></div>
+    </div>`;
+    bind();
+  };
+
+  const markCustom = () => { c.preset = "custom"; };
+
+  const bind = () => {
+    dlg.querySelectorAll("[data-preset]").forEach((b) => b.onclick = () => {
+      const k = b.dataset.preset;
+      c.preset = k;
+      if (k !== "custom" && exportPresets[k]) {
+        const p = exportPresets[k];
+        c.mask = p.mask; c.light = p.light; c.hide = { ...p.hide };
+      }
+      draw();
+    });
+    $("cfgMask").onchange = (e) => { c.mask = e.target.checked; markCustom(); draw(); };
+    $("cfgLight").onchange = (e) => { c.light = e.target.checked; markCustom(); draw(); };
+    dlg.querySelectorAll("[data-hide]").forEach((b) => b.onchange = () => {
+      c.hide[b.dataset.hide] = b.checked; markCustom(); draw();
+    });
+    $("cfgCancel").onclick = () => { clearPreview(); dlg.remove(); };
+    $("cfgPreview").onclick = () => {
+      // 패널을 숨겨 뷰어를 그대로 보여주고, 아무 곳이나 누르면 돌아온다.
+      applyPreview(c.hide);
+      dlg.style.display = "none";
+      const back = document.createElement("div");
+      back.className = "pvbar";
+      back.innerHTML = `<span>미리보기 — 받는 사람에게 이렇게 보입니다</span><button>설정으로 돌아가기</button>`;
+      document.body.appendChild(back);
+      back.querySelector("button").onclick = () => {
+        clearPreview(); back.remove(); dlg.style.display = "";
+      };
+    };
+    $("cfgSave").onclick = async () => {
+      const btn = $("cfgSave"); btn.disabled = true; btn.textContent = "저장 중…";
+      try {
+        const r = await fetch("/api/export-config", { method: "POST", body: JSON.stringify(c) });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        exportCfg = d.config;
+        clearPreview(); dlg.remove();
+        flash("내보내기 설정 저장됨");
+        onDone && onDone();
+      } catch (e) {
+        $("cfgMsg").innerHTML = `<span style="color:var(--del)">저장 실패: ${esc(e.message)}</span>`;
+        btn.disabled = false; btn.textContent = "저장";
+      }
+    };
+  };
+  document.body.appendChild(dlg);
+  draw();
+}
+
 async function doExport() {
   if (!exportDefaults) {
     try { exportDefaults = await (await fetch("/api/export-defaults")).json(); }
@@ -2023,13 +2184,11 @@ async function doExport() {
       </div>
       <label class="fl">파일명</label>
       <input class="fi" id="exName" value="${esc(defName)}" spellcheck="false" />
-      <label class="ck"><input type="checkbox" id="exMask" />
-        <span><b>대화 내역 중 민감 정보 마스킹</b>
-        <span class="sd">API 키·토큰·비밀번호·개인키를 <span class="icode">••••</span>로 가립니다. 체크를 풀면 원본 그대로 나갑니다.</span></span></label>
-      <label class="ck"><input type="checkbox" id="exLight" />
-        <span><b>경량으로 내보내기</b>
-        <span class="sd">도구 실행 결과 본문을 줄여 파일을 작게 만듭니다. 파일 용량의 대부분이 이 부분이라
-        보통 몇 MB에서 1MB 안팎으로 줄어듭니다. 잘린 자리에는 표시가 남습니다.</span></span></label>
+      <label class="fl">내보내기 설정</label>
+      <div class="cfgrow">
+        <div class="cfgsum" id="exCfgSum">불러오는 중…</div>
+        <button class="ghostbtn" id="exCfgEdit">변경</button>
+      </div>
       <div class="acts">
         <button class="btn-sec" id="exCancel">취소</button>
         <button class="btn-primary" id="exGo">내보내기</button>
@@ -2040,6 +2199,10 @@ async function doExport() {
 
   const close = () => dlg.remove();
   $("exCancel").onclick = close;
+
+  const paintCfg = () => { $("exCfgSum").innerHTML = cfgSummary(exportCfg); };
+  loadExportCfg().then(paintCfg);
+  $("exCfgEdit").onclick = () => openExportCfg(paintCfg);
   const pick = $("exPick");
   if (pick) pick.onclick = async () => {
     pick.disabled = true;
@@ -2065,9 +2228,8 @@ async function doExport() {
       const q = new URLSearchParams({
         dir: $("exDir").value.trim(),
         name: $("exName").value.trim(),
-        mask: $("exMask").checked ? "1" : "0",
-        light: $("exLight").checked ? "1" : "0",
       });
+      // 설정은 서버가 export-config.json 에서 읽는다 — 여기서 다시 보내지 않는다.
       const r = await fetch(`/export/${SESSION}?${q}`);
       const d = await r.json();
       if (d.error) throw new Error(d.error);
