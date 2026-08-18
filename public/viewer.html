@@ -4,14 +4,24 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>claude-watch · 세션</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<!-- 외부 CDN을 쓰지 않는다. 내보낸 HTML은 남에게 보내는 파일이라, 여는 쪽 인터넷 사정에
+     따라 깨지거나 외부 도메인에 접속 기록이 남으면 안 된다. 아래는 전부 로컬 vendor/ 에서 온다.
+     내보낼 때는 서버가 이 태그들을 파일 내용 자체로 치환한다(server.mjs 의 inlineVendor). -->
+<style id="cw-font-face">
+/* 본문 한글은 웹폰트를 싣지 않는다 — 설치돼 있으면 Pretendard, 없으면 OS 기본 한글 폰트로
+   떨어진다. 한글 글리프 전체는 4종 합쳐 2.6MB라 '보낼 수 있는 파일' 목표와 맞지 않는다.
+   반면 JetBrains Mono 는 라틴 문자만이라 43KB고, UI 대부분이 이 폰트를 쓰므로 싣는다. */
+@font-face{
+  font-family:'JetBrains Mono';
+  src:url('/vendor/jetbrains-mono.woff2') format('woff2');
+  font-weight:100 800; font-style:normal; font-display:swap;
+}
+</style>
+<link rel="stylesheet" href="/vendor/atom-one-dark.min.css" />
+<script src="/vendor/highlight.min.js"></script>
+<script src="/vendor/marked.min.js"></script>
+<!-- mermaid 는 3.2MB라 내보낼 때 제외된다. 대신 뷰어가 그려둔 SVG를 캐시에 넣어 내보낸다. -->
+<script src="/vendor/mermaid.min.js" id="cw-mermaid"></script>
 <style>
 /* ══ 디자인 토큰 (핸드오프 Design Tokens) ══ */
 :root{
@@ -1204,8 +1214,12 @@ async function renderDiagram() {
     try {
       const { svg } = await mermaid.render("mmr" + mermaidSeq, stripFence(text).trim());
       el.innerHTML = svg;
+      // 그린 결과를 서버 캐시에 얹어둔다 → 내보낼 때 mermaid 없이 이 SVG만 실으면 된다.
+      fetch(`/api/diagram-svg/${SESSION}`, { method: "POST", body: svg }).catch(() => {});
     } catch (e) { el.innerHTML = `<div class="secmeta">다이어그램을 그리지 못했습니다: ${esc(e.message)}</div>`; }
   };
+  // 내보낸 파일에는 mermaid 가 없다. 미리 그려진 SVG를 그대로 보여준다.
+  const paintSvg = (svg) => { box.innerHTML = `<div class="mermaid">${svg}</div>`; };
   const btn = () => {
     box.innerHTML = `<button class="aibtn" id="diaBtn">✨ 아키텍처 다이어그램 생성 (claude -p)</button>`;
     $("diaBtn").onclick = async () => {
@@ -1220,7 +1234,12 @@ async function renderDiagram() {
   };
   if (EXPORT) {
     const c = EXPORT.cache && EXPORT.cache.diagram;
-    return c ? paint(c.text) : (box.innerHTML = `<div class="secmeta">내보낼 때 생성된 다이어그램이 없습니다</div>`);
+    if (c && c.svg) return paintSvg(c.svg);
+    // 다이어그램 텍스트만 있고 그려둔 적이 없으면, 내보낸 파일에선 그릴 수 없다(mermaid 미포함).
+    box.innerHTML = `<div class="secmeta">${c
+      ? "다이어그램이 그려지지 않은 채로 내보내졌습니다 (내보내기 전에 [구조] 탭을 한 번 열어주세요)"
+      : "내보낼 때 생성된 다이어그램이 없습니다"}</div>`;
+    return;
   }
   try {
     const r = await fetch(`/api/ai-cache/diagram/${SESSION}`);
@@ -1980,6 +1999,10 @@ async function doExport() {
       <label class="ck"><input type="checkbox" id="exMask" />
         <span><b>대화 내역 중 민감 정보 마스킹</b>
         <span class="sd">API 키·토큰·비밀번호·개인키를 <span class="icode">••••</span>로 가립니다. 체크를 풀면 원본 그대로 나갑니다.</span></span></label>
+      <label class="ck"><input type="checkbox" id="exLight" />
+        <span><b>경량으로 내보내기</b>
+        <span class="sd">도구 실행 결과 본문을 줄여 파일을 작게 만듭니다. 파일 용량의 대부분이 이 부분이라
+        보통 몇 MB에서 1MB 안팎으로 줄어듭니다. 잘린 자리에는 표시가 남습니다.</span></span></label>
       <div class="acts">
         <button class="btn-sec" id="exCancel">취소</button>
         <button class="btn-primary" id="exGo">내보내기</button>
@@ -2016,6 +2039,7 @@ async function doExport() {
         dir: $("exDir").value.trim(),
         name: $("exName").value.trim(),
         mask: $("exMask").checked ? "1" : "0",
+        light: $("exLight").checked ? "1" : "0",
       });
       const r = await fetch(`/export/${SESSION}?${q}`);
       const d = await r.json();
@@ -2024,7 +2048,14 @@ async function doExport() {
       const detail = m && m.total
         ? `민감정보 ${m.total}개 가림 (${Object.entries(m.counts).map(([k, v]) => `${k} ${v}`).join(", ")})`
         : (m ? "가릴 민감정보를 찾지 못했습니다" : "");
+      const L = d.light || {};
+      const size = L.bytes ? (L.bytes / 1024 / 1024).toFixed(2) + " MB" : "";
+      const lightInfo = L.mode === "light" && L.savedChars
+        ? `경량 적용 — 도구 결과 ${L.result || 0}건 줄임 (${(L.savedChars / 1024 / 1024).toFixed(1)}MB 절약)`
+        : "";
       msg.innerHTML = `<span style="color:var(--add)">저장됨</span> <span class="icode">${esc(homey(d.path))}</span>`
+        + (size ? ` <span class="sd">${size}</span>` : "")
+        + (lightInfo ? `<br>${esc(lightInfo)}` : "")
         + (detail ? `<br>${esc(detail)}` : "");
       flash(`저장됨: ${d.file}`);
       go.textContent = "완료";

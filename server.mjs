@@ -21,6 +21,7 @@ import {
   completedAgentIds,
 } from "./lib/parse.mjs";
 import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
+import { lightenEvents, lightenAgg } from "./lib/lighten.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -296,6 +297,34 @@ async function readRateLimits() {
 }
 
 // ── 라우팅 ───────────────────────────────────────────────────────────
+const VENDOR_DIR = join(__dirname, "public", "vendor");
+
+// 내보낸 HTML은 외부에 요청을 보내면 안 된다(오프라인에서 깨지고, 여는 사람 기록이 남는다).
+// 그래서 vendor 링크 태그를 파일 내용 자체로 바꿔 넣는다.
+//   · marked/highlight/폰트 → 인라인 (합쳐 ~200KB)
+//   · mermaid(3.2MB)        → 통째로 제거. 뷰어가 미리 그려둔 SVG를 대신 싣는다.
+async function inlineVendor(html) {
+  const [css, hljs, marked, font] = await Promise.all([
+    readFile(join(VENDOR_DIR, "atom-one-dark.min.css"), "utf8"),
+    readFile(join(VENDOR_DIR, "highlight.min.js"), "utf8"),
+    readFile(join(VENDOR_DIR, "marked.min.js"), "utf8"),
+    readFile(join(VENDOR_DIR, "jetbrains-mono.woff2")),
+  ]);
+  // ⚠️ 치환문자열에 파일 내용을 직접 넣으면 $& · $' 등이 특수 치환으로 해석된다 → 전부 함수 치환.
+  const swap = (find, make) => { html = html.replace(find, () => make()); };
+
+  swap("url('/vendor/jetbrains-mono.woff2') format('woff2')",
+    () => `url(data:font/woff2;base64,${font.toString("base64")}) format('woff2')`);
+  swap('<link rel="stylesheet" href="/vendor/atom-one-dark.min.css" />',
+    () => `<style>${css}</style>`);
+  swap('<script src="/vendor/highlight.min.js"></script>',
+    () => `<script>${hljs}</script>`);
+  swap('<script src="/vendor/marked.min.js"></script>',
+    () => `<script>${marked}</script>`);
+  // mermaid 는 싣지 않는다 — 다이어그램은 cache.diagram.svg 로 이미 그려진 채 들어간다.
+  swap('<script src="/vendor/mermaid.min.js" id="cw-mermaid"></script>', () => "");
+  return html;
+}
 const VIEWER_PATH = join(__dirname, "public", "viewer.html");
 const LIST_PATH = join(__dirname, "public", "list.html");
 let VIEWER = await readFile(VIEWER_PATH, "utf8");
@@ -319,7 +348,7 @@ function sameOriginOnly(req) {
   }
   return true;
 }
-const MUTATING = /^\/(export|api\/(rename|setproject|ai|pick-folder))\//;
+const MUTATING = /^\/(export|api\/(rename|setproject|ai|pick-folder|diagram-svg))\//;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -385,6 +414,34 @@ const server = http.createServer(async (req, res) => {
     if (project) ov[id] = project; else delete ov[id];
     await writeJson(PROJECT_OVERRIDE_PATH, ov);
     return send(res, 200, "application/json", JSON.stringify({ ok: true, id, project }));
+  }
+
+  // 뷰어가 다이어그램을 그리고 나면 그 SVG를 캐시에 얹어둔다.
+  // 내보낼 땐 mermaid(3.2MB)를 빼는 대신 이 SVG를 싣는다 — 결과가 같으니 받는 쪽에서 다시 그릴 이유가 없다.
+  const mDiaSvg = path.match(/^\/api\/diagram-svg\/([\w-]+)$/);
+  if (mDiaSvg) {
+    let body = "";
+    for await (const chunk of req) {
+      body += chunk;
+      if (body.length > 2_000_000) return send(res, 413, "application/json", JSON.stringify({ error: "too large" }));
+    }
+    const c = await readCache(mDiaSvg[1], "diagram");
+    if (!c) return send(res, 404, "application/json", JSON.stringify({ error: "no diagram cache" }));
+    await writeCache(mDiaSvg[1], "diagram", { ...c, svg: body });
+    return send(res, 200, "application/json", JSON.stringify({ ok: true }));
+  }
+
+  // 로컬 vendor 자산 (CDN 대체). 파일명만 허용해 상위 경로 탈출을 막는다.
+  const mVendor = path.match(/^\/vendor\/([\w.-]+)$/);
+  if (mVendor && !mVendor[1].includes("..")) {
+    const types = { js: "text/javascript", css: "text/css", woff2: "font/woff2" };
+    const type = types[mVendor[1].split(".").pop()];
+    if (!type) return send(res, 404, "text/plain", "not found");
+    try {
+      const buf = await readFile(join(VENDOR_DIR, mVendor[1]));
+      res.writeHead(200, { "content-type": type, "cache-control": "max-age=86400" });
+      return res.end(buf);
+    } catch { return send(res, 404, "text/plain", "not found"); }
   }
 
   // 세션 뷰어 셸 (sessionId 주입)
@@ -497,12 +554,21 @@ const server = http.createServer(async (req, res) => {
         masked = { total: Object.values(counts).reduce((s, n) => s + n, 0), counts };
       }
 
+      // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
+      //   기본(full)   : 뷰어가 안 그리는 6000자 뒤만 잘라낸다 → 보이는 것이 달라지지 않는다
+      //   light        : 도구 결과를 알아볼 만큼만 남긴다 → 남에게 보낼 크기
+      const mode = url.searchParams.get("light") === "1" ? "light" : "full";
+      const lt = lightenEvents(out.events, mode);
+      out = { ...out, events: lt.events, agg: lightenAgg(out.agg, mode, lt.counts), light: mode };
+
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // </script> 만 닫힘 방지로 이스케이프.
       const dataJson = JSON.stringify(out).replace(/<\/script>/gi, "<\\/script>");
       const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
       // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
-      const html = VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>");
+      const html = await inlineVendor(
+        VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>")
+      );
 
       // 저장 위치·파일명: 사용자가 지정할 수 있고, 비우면 기본값을 쓴다.
       const clean = (s) => String(s).replace(/[\/\\:*?"<>|\n\r]+/g, " ").trim();
@@ -526,6 +592,7 @@ const server = http.createServer(async (req, res) => {
         ok: true, file: fname, dir, path: fpath,
         hasAI: { summary: !!cache.summary, diagram: !!cache.diagram },
         masked: doMask ? masked : null,
+        light: { mode, ...lt.counts, bytes: Buffer.byteLength(html) },
       }));
     } catch (e) {
       return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));
