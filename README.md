@@ -136,10 +136,29 @@ ln -s "$PWD/bin/cw" /usr/local/bin/cw
 | `~/.claude-watch/exports/` | 내보낸 HTML 기본 저장 위치 |
 | `~/.claude-watch/aliases.json` | 사용자가 바꾼 세션 제목 |
 | `~/.claude-watch/project-overrides.json` | 사용자가 재지정한 프로젝트 |
-| `~/.claude-watch/export-config.json` | 내보내기 설정(프리셋·마스킹·경량·뺄 항목) |
+| `~/.claude-watch/export-config.json` | 내보내기 설정(화면 요소별 포함 여부) |
+| `~/.claude-watch/archive/` | **세션 보관본** — 원본 구조 그대로 복사 |
 | `~/.claude-watch/statusline-input.json` | statusLine이 넘겨준 구독 한도 등 |
 
 읽기만 하는 것: `~/.claude/projects/**/*.jsonl` (세션 로그), `<세션id>/subagents/*.jsonl` (서브에이전트 전사).
+
+## 세션 보관
+
+**Claude Code 는 30일 지난 세션 전사를 지웁니다.** `cleanupPeriodDays` 기본값이 30일이고,
+설정하지 않으면 조용히 삭제됩니다. 이 도구가 읽는 데이터가 30일마다 사라진다는 뜻입니다.
+
+그래서 서버가 못 보던 세션을 `~/.claude-watch/archive/` 로 복사해 둡니다.
+
+- **원본은 절대 건드리지 않습니다.** 읽어서 복사만 합니다
+- 세션 로그는 append-only 라 **크기가 커진 것만** 다시 복사합니다
+- 서브에이전트 전사(`<세션id>/subagents/`)도 함께 보관합니다
+- 기동 2초 뒤 한 번, 이후 10분마다. `statusline.sh` 가 서버를 늘 띄워두므로 자동으로 쌓입니다
+- 끄려면 `CW_ARCHIVE=0`
+
+원본이 지워진 세션은 보관본으로 열리고, 목록에 `보관` 배지가 붙습니다.
+같은 세션이 양쪽에 있으면 원본이 우선합니다(원본이 최신).
+
+⚠️ 보관본은 계속 쌓이기만 하고 자동으로 지우지 않습니다. 용량은 `GET /api/archive` 로 확인하세요.
 
 ## 보안 · 프라이버시
 
