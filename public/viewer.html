@@ -106,6 +106,17 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
 .btn-resume:hover{border-color:var(--sess);color:var(--ink)}
 .btn-resume:active{transform:scale(0.97)}
+/* 첫 보관을 미뤄둔 상태 안내 — 터미널에서 못 물어봤을 때의 출구 */
+.archnote{margin:8px 10px;padding:10px 11px;border:1px solid var(--accent);border-radius:9px;
+  background:var(--accent-bg);font-size:calc(11.5px * var(--fs) * var(--fs-rail,1));
+  color:var(--accent-ink);line-height:1.6}
+.archnote[hidden]{display:none}
+.archnote b{display:block;margin-bottom:4px;font-size:calc(12px * var(--fs) * var(--fs-rail,1))}
+.archnote button{margin-top:8px;width:100%;font-family:var(--mono);font-weight:700;
+  font-size:calc(11.5px * var(--fs) * var(--fs-rail,1));padding:7px;border-radius:7px;
+  background:var(--accent);color:#2c1a26}
+.archnote button[disabled]{background:var(--card);color:var(--muted);border:1px solid var(--line)}
+
 /* 보관 배지 — 원본이 지워지고 claude-watch 사본으로만 남은 세션 */
 .kept{flex-shrink:0;font-family:var(--mono);font-size:calc(9.5px * var(--fs) * var(--fs-rail,1));
   font-weight:800;letter-spacing:.06em;padding:2px 5px;border-radius:4px;
@@ -674,6 +685,7 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
       </button>
     </div>
     <div class="raillist" id="raillist"></div>
+    <div class="archnote" id="archnote" hidden></div>
     <button class="railfoot" id="railfoot"><span class="l"></span><span class="r"></span></button>
     <div class="statusline">
       <div class="lab">터미널 STATUSLINE</div>
@@ -1280,6 +1292,32 @@ function renderArch() {
   renderDiagram();
 }
 
+// 첫 보관을 미뤄둔 경우에만 뜬다. statusline.sh 가 자동 기동한 서버는 터미널이 없어
+// 물어볼 수 없으므로, 여기가 사용자가 보관을 시작할 수 있는 유일한 출구다.
+let archNoteDone = false;
+async function paintArchiveNote() {
+  const el = $("archnote");
+  if (!el || EXPORT || archNoteDone) return;
+  let d;
+  try { d = await (await fetch("/api/archive")).json(); } catch { return; }
+  if (!d.deferred) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<b>세션 기록이 보관되지 않고 있습니다</b>
+    Claude Code 는 30일 지난 세션을 지웁니다. 지금 ${(d.pendingBytes / 1024 / 1024).toFixed(0)}MB 를 보관할 수 있습니다.
+    보관본은 이 컴퓨터에만 저장되고 외부로 나가지 않습니다.
+    <button id="archGo">지금 보관 시작</button>`;
+  $("archGo").onclick = async () => {
+    const b = $("archGo"); b.disabled = true; b.textContent = "보관 중…";
+    try {
+      const r = await (await fetch("/api/archive", { method: "POST" })).json();
+      if (r.error) throw new Error(r.error);
+      archNoteDone = true;
+      el.innerHTML = `<b>보관 완료</b>세션 ${r.files || 0}개 · 서브에이전트 ${r.subagents || 0}개`;
+      setTimeout(() => { el.hidden = true; }, 4000);
+    } catch (e) { b.disabled = false; b.textContent = "실패 — 다시 시도"; }
+  };
+}
+
 let mermaidSeq = 0;
 async function renderDiagram() {
   const box = $("diaWrap");
@@ -1861,6 +1899,7 @@ function renderRail() {
   const others = new Set(INDEX.map(x => x.project)); others.delete(proj);
   $("railfoot").querySelector(".l").textContent = `다른 프로젝트 ${others.size}개`;
   $("railfoot").querySelector(".r").textContent = `세션 ${INDEX.length}`;
+  paintArchiveNote();
   $("railfoot").onclick = openProjectMenu;
   $("projsel").onclick = openProjectMenu;
 
