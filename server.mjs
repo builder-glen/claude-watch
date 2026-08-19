@@ -195,6 +195,36 @@ async function copyIfGrown(src, dst) {
   return s.size - (d ? d.size : 0);
 }
 
+const CONSENT_PATH = join(CW_DIR, "archive-consent.json");
+// 첫 보관을 그냥 할지 물어볼지 가르는 크기. 테스트가 500MB 파일을 만들지 않아도 되도록 env 로 뺀다.
+const FIRST_RUN_LIMIT = Number(process.env.CW_ARCHIVE_LIMIT || 500 * 1024 * 1024);
+
+// 아직 보관하지 않은 양과, 이번이 첫 실행인지. 첫 실행에서만 크기를 물어본다.
+async function pendingArchiveSize() {
+  let bytes = 0, first = true;
+  let projects = [];
+  try { projects = await readdir(PROJECTS_DIR); } catch { return { bytes: 0, first: false }; }
+  try { first = (await readdir(ARCHIVE_DIR)).length === 0; } catch { first = true; }
+  for (const p of projects) {
+    if (p === AI_PROJECT_DIR) continue;
+    const dir = join(PROJECTS_DIR, p);
+    let entries = [];
+    try { entries = await readdir(dir); } catch { continue; }
+    for (const f of entries) {
+      if (f.endsWith(".jsonl")) {
+        try { bytes += (await stat(join(dir, f))).size; } catch {}
+        continue;
+      }
+      let subs = [];
+      try { subs = await readdir(join(dir, f, "subagents")); } catch { continue; }
+      for (const sf of subs) {
+        try { bytes += (await stat(join(dir, f, "subagents", sf))).size; } catch {}
+      }
+    }
+  }
+  return { bytes, first };
+}
+
 let archiveRunning = false;
 async function archiveSessions() {
   if (archiveRunning) return null;
@@ -440,7 +470,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
-  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config") && !sameOriginOnly(req))
+  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config" || path === "/api/archive") && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // HTML 을 쓰는 경로에서만 파일이 바뀌었는지 확인한다(CW_DEV 없이 떠 있어도 최신이 나간다).
@@ -503,16 +533,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 보관 현황 — 몇 개를 지키고 있는지, 원본이 사라진 게 몇 개인지.
+  // POST 는 미뤄둔 첫 보관을 지금 시작한다(터미널에서 못 물어본 경우의 출구).
   if (path === "/api/archive") {
+    if (req.method === "POST") {
+      await writeJson(CONSENT_PATH, { ok: true, at: new Date().toISOString() });
+      const r = await runArchive().catch((e) => ({ error: String(e?.message || e) }));
+      return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ ok: true, ...r }));
+    }
     const all = await findSessions();
-    const kept = all.filter((s) => s.archived);
+    const consent = await readJson(CONSENT_PATH, null);
     let bytes = 0;
     for (const s of all) bytes += s.size || 0;
     return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
       on: ARCHIVE_ON, dir: ARCHIVE_DIR,
       total: all.length,
-      archivedOnly: kept.length,      // 원본이 지워져 보관본으로만 남은 세션
+      archivedOnly: all.filter((s) => s.archived).length,  // 원본이 지워져 보관본으로만 남은 세션
       bytes,
+      deferred: !!(consent && consent.deferred),           // 첫 보관을 미뤄둔 상태
+      pendingBytes: consent && consent.deferred ? consent.bytes : 0,
     }));
   }
 
@@ -953,14 +991,66 @@ async function runClaude(kind, digest) {
 // 보관은 기동 직후 한 번, 이후 10분마다. statusline.sh 가 서버를 늘 띄워두므로
 // 사용자가 아무것도 하지 않아도 쌓인다. CW_ARCHIVE=0 이면 끈다.
 const ARCHIVE_ON = process.env.CW_ARCHIVE !== "0";
-if (ARCHIVE_ON) {
-  const run = () => archiveSessions().then((r) => {
-    if (r && (r.files || r.subagents))
-      console.log(`보관: 세션 ${r.files}개 · 서브에이전트 ${r.subagents}개 · ${(r.bytes / 1024 / 1024).toFixed(1)}MB`);
-  }).catch(() => {});
-  setTimeout(run, 2000);
-  setInterval(run, 10 * 60 * 1000).unref();
+
+const runArchive = () => archiveSessions().then((r) => {
+  if (r && (r.files || r.subagents))
+    console.log(`보관: 세션 ${r.files}개 · 서브에이전트 ${r.subagents}개 · ${(r.bytes / 1024 / 1024).toFixed(1)}MB`);
+  return r;
+});
+
+// 첫 실행은 통째로 복사하는 일이라 디스크가 두 배가 된다. 작은 환경은 그냥 하고,
+// 큰 환경에서만 물어본다 — Claude Code 가 조용히 지우는 걸 문제 삼아놓고
+// 우리가 조용히 GB 를 복사하면 같은 잘못이다.
+async function startArchiving() {
+  if (!ARCHIVE_ON) return;
+  const tick = () => { setInterval(() => runArchive().catch(() => {}), 10 * 60 * 1000).unref(); };
+
+  const consent = await readJson(CONSENT_PATH, null);
+  if (consent && consent.ok) { await runArchive().catch(() => {}); return tick(); }
+
+  const pending = await pendingArchiveSize();
+  if (!pending.first || pending.bytes <= FIRST_RUN_LIMIT) {
+    // 이미 보관 중이거나, 처음이라도 부담 없는 크기 → 그냥 한다
+    await writeJson(CONSENT_PATH, { ok: true, auto: true });
+    await runArchive().catch(() => {});
+    return tick();
+  }
+
+  const mb = (pending.bytes / 1024 / 1024).toFixed(0);
+  const notice =
+    `\n  claude-watch 는 Claude Code 가 주기적으로 제거하는 30일 지난 세션을 아카이빙합니다.\n` +
+    `  아카이빙한 데이터는 사용자의 PC 에만 저장되며 외부로 전송하지 않습니다.\n\n` +
+    `  현재 사용자의 PC 에 남아있는 Claude Code 의 세션 데이터가 500MB 를 초과했습니다. (${mb}MB)\n`;
+
+  // 터미널에서 직접 띄운 경우에만 물어본다. statusline.sh 가 자동 기동한 서버는
+  // stdio 가 없으므로 물어볼 수 없다 → 보관을 미루고 안내만 남긴다.
+  if (!process.stdin.isTTY) {
+    console.log(notice + `  데이터를 아카이빙하려면 뷰어 페이지에서 [지금 보관] 을 누르거나\n` +
+      `  터미널에서 직접 실행하세요:  node server.mjs\n`);
+    await writeJson(CONSENT_PATH, { deferred: true, bytes: pending.bytes });
+    return tick();
+  }
+
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  console.log(notice + `  데이터를 지금 아카이빙 해 둘까요?\n\n` +
+    `    1) 지금 아카이빙 시작\n` +
+    `    2) 나중에 하기 — 뷰어 페이지에서도 보관할 수 있습니다.\n` +
+    `                     단, 보관하기 전의 기록은 삭제될 수 있습니다.\n`);
+  let ans = "2";
+  try { ans = (await rl.question("  선택 [1/2]: ")).trim() || "2"; } catch {} finally { rl.close(); }
+
+  if (ans === "1") {
+    await writeJson(CONSENT_PATH, { ok: true, at: new Date().toISOString() });
+    console.log("  보관을 시작합니다…");
+    await runArchive().catch(() => {});
+  } else {
+    await writeJson(CONSENT_PATH, { deferred: true, bytes: pending.bytes });
+    console.log("  나중에 하기로 했습니다. 뷰어 페이지에서 언제든 시작할 수 있습니다.\n");
+  }
+  tick();
 }
+startArchiving().catch(() => {});
 
 server.listen(PORT, HOST, () => {
   console.log(`claude-watch listening on http://localhost:${PORT}`);
