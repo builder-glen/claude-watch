@@ -29,15 +29,16 @@ const PORT = Number(process.env.CW_PORT || 4317);
 // 인증이 없으므로 기본은 루프백 전용. 같은 와이파이의 다른 기기에서 접근하지 못한다.
 // 굳이 열어야 하면 CW_HOST=0.0.0.0 으로 명시해야 한다(권장하지 않음).
 const HOST = process.env.CW_HOST || "127.0.0.1";
-const PROJECTS_DIR = join(homedir(), ".claude", "projects");
+// 세션 원본 위치. 테스트가 실제 로그를 건드리지 않도록 env 로 바꿀 수 있다(읽기 전용).
+const PROJECTS_DIR = process.env.CW_PROJECTS || join(homedir(), ".claude", "projects");
 
 // ── 세션 인덱스: <세션id> → 파일 경로 ────────────────────────────────
-async function findSessions() {
+async function scanSessionRoot(root, archived) {
   const out = [];
   let projects = [];
-  try { projects = await readdir(PROJECTS_DIR); } catch { return out; }
+  try { projects = await readdir(root); } catch { return out; }
   for (const p of projects) {
-    const dir = join(PROJECTS_DIR, p);
+    const dir = join(root, p);
     let files = [];
     try { files = await readdir(dir); } catch { continue; }
     for (const f of files) {
@@ -51,11 +52,24 @@ async function findSessions() {
         project: p.replace(/^-Users-[^-]+-/, "").replace(/-/g, "/"),
         mtime: st.mtimeMs,
         size: st.size,
+        archived,
       });
     }
   }
-  out.sort((a, b) => b.mtime - a.mtime);
   return out;
+}
+
+// 원본과 보관본을 합쳐서 돌려준다. 같은 세션이면 원본이 이긴다(원본이 최신이므로).
+// 보관본만 남은 세션은 archived:true 로 표시해 목록에서 구분할 수 있게 한다.
+async function findSessions() {
+  const [live, kept] = await Promise.all([
+    scanSessionRoot(PROJECTS_DIR, false),
+    scanSessionRoot(ARCHIVE_DIR, true),
+  ]);
+  const byId = new Map();
+  for (const s of kept) byId.set(s.id, s);
+  for (const s of live) byId.set(s.id, s);
+  return [...byId.values()].sort((a, b) => b.mtime - a.mtime);
 }
 
 async function pathForSession(id) {
@@ -161,6 +175,59 @@ async function writeCache(id, kind, data) {
   try { await mkdir(CACHE_DIR, { recursive: true }); await writeFile(cachePath(id, kind), JSON.stringify(data)); } catch {}
 }
 
+// ── 세션 보관 ────────────────────────────────────────────────────────
+// Claude Code 는 시작할 때 30일 지난 전사를 지운다(cleanupPeriodDays 기본 30).
+// 이 도구가 서 있는 땅이 30일마다 지워진다는 뜻이라, 못 보던 세션은 사본을 떠둔다.
+//
+// 원칙: 원본은 절대 건드리지 않는다. 읽어서 복사만 한다.
+// 세션 로그는 append-only 라 크기가 커진 것만 다시 복사하면 된다.
+const ARCHIVE_DIR = join(CW_DIR, "archive");
+// AI 요약을 만들며 생긴 껍데기 세션은 보관하지 않는다(폴더명은 cwd 를 - 로 치환한 규칙).
+const AI_PROJECT_DIR = AI_CWD.replace(/[/.]/g, "-");
+
+async function copyIfGrown(src, dst) {
+  let s, d = null;
+  try { s = await stat(src); } catch { return 0; }
+  try { d = await stat(dst); } catch {}
+  if (d && d.size >= s.size) return 0;          // 이미 같거나 더 많이 갖고 있다
+  await mkdir(dirname(dst), { recursive: true });
+  await writeFile(dst, await readFile(src));
+  return s.size - (d ? d.size : 0);
+}
+
+let archiveRunning = false;
+async function archiveSessions() {
+  if (archiveRunning) return null;
+  archiveRunning = true;
+  const r = { files: 0, bytes: 0, subagents: 0 };
+  try {
+    let projects = [];
+    try { projects = await readdir(PROJECTS_DIR); } catch { return r; }
+    for (const p of projects) {
+      if (p === AI_PROJECT_DIR) continue;
+      const dir = join(PROJECTS_DIR, p);
+      let entries = [];
+      try { entries = await readdir(dir); } catch { continue; }
+      for (const f of entries) {
+        if (f.endsWith(".jsonl")) {
+          const n = await copyIfGrown(join(dir, f), join(ARCHIVE_DIR, p, f)).catch(() => 0);
+          if (n) { r.files++; r.bytes += n; }
+          continue;
+        }
+        // <세션id>/subagents/*.jsonl (+ .meta.json) — 서브에이전트 전사도 같이 지킨다
+        const subDir = join(dir, f, "subagents");
+        let subs = [];
+        try { subs = await readdir(subDir); } catch { continue; }
+        for (const sf of subs) {
+          const n = await copyIfGrown(join(subDir, sf), join(ARCHIVE_DIR, p, f, "subagents", sf)).catch(() => 0);
+          if (n) { r.subagents++; r.bytes += n; }
+        }
+      }
+    }
+  } finally { archiveRunning = false; }
+  return r;
+}
+
 // ── 세션 색인 (목록·검색용). 목록 열 때 mtime 비교로 바뀐 것만 갱신. ──
 const INDEX_PATH = join(CW_DIR, "index.json");
 const ALIAS_PATH = join(CW_DIR, "aliases.json"); // 사용자가 수정한 제목(영구, 색인 갱신에도 안 덮임)
@@ -239,6 +306,7 @@ async function buildIndex() {
     if (prev && prev.updatedAt === s.mtime) {
       out[s.id] = prev; // 안 바뀜 → 카드 재사용
       if (out[s.id].projectRaw == null) out[s.id].projectRaw = out[s.id].project; // 구버전 캐시 마이그레이션
+      out[s.id].archived = !!s.archived;  // 보관 여부는 캐시가 아니라 매번 현재 상태를 쓴다
     } else {
       try {
         const text = await readFile(s.path, "utf8");
@@ -248,6 +316,7 @@ async function buildIndex() {
         const ms = modelStats(events);
         out[s.id] = {
           id: s.id, projectRaw: extractProject(text, s.project), updatedAt: s.mtime,
+          archived: !!s.archived,   // 원본이 지워져 보관본으로만 남은 세션
           cwd: extractCwd(text),
           interactive: extractEntrypoint(text) === "cli",
           generated: isGeneratedSession(text, extractCwd(text)),
@@ -431,6 +500,20 @@ const server = http.createServer(async (req, res) => {
     if (project) ov[id] = project; else delete ov[id];
     await writeJson(PROJECT_OVERRIDE_PATH, ov);
     return send(res, 200, "application/json", JSON.stringify({ ok: true, id, project }));
+  }
+
+  // 보관 현황 — 몇 개를 지키고 있는지, 원본이 사라진 게 몇 개인지.
+  if (path === "/api/archive") {
+    const all = await findSessions();
+    const kept = all.filter((s) => s.archived);
+    let bytes = 0;
+    for (const s of all) bytes += s.size || 0;
+    return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
+      on: ARCHIVE_ON, dir: ARCHIVE_DIR,
+      total: all.length,
+      archivedOnly: kept.length,      // 원본이 지워져 보관본으로만 남은 세션
+      bytes,
+    }));
   }
 
   // 내보내기 설정 — 내보낼 때마다 체크박스를 다시 고르지 않도록 한 번 정해두고 재사용한다.
@@ -865,6 +948,18 @@ async function runClaude(kind, digest) {
     child.stdin.write(PROMPTS[kind] + digest);
     child.stdin.end();
   });
+}
+
+// 보관은 기동 직후 한 번, 이후 10분마다. statusline.sh 가 서버를 늘 띄워두므로
+// 사용자가 아무것도 하지 않아도 쌓인다. CW_ARCHIVE=0 이면 끈다.
+const ARCHIVE_ON = process.env.CW_ARCHIVE !== "0";
+if (ARCHIVE_ON) {
+  const run = () => archiveSessions().then((r) => {
+    if (r && (r.files || r.subagents))
+      console.log(`보관: 세션 ${r.files}개 · 서브에이전트 ${r.subagents}개 · ${(r.bytes / 1024 / 1024).toFixed(1)}MB`);
+  }).catch(() => {});
+  setTimeout(run, 2000);
+  setInterval(run, 10 * 60 * 1000).unref();
 }
 
 server.listen(PORT, HOST, () => {
