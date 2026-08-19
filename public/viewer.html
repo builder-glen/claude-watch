@@ -76,6 +76,18 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .pulse{animation:cwpulse 1.6s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){ .pulse{animation:none} *{transition-duration:1ms !important} }
 
+/* 앵커로 이동했을 때 그 자리를 잠깐 밝힌다 — 어디로 왔는지 눈이 따라가도록 */
+.jumped{animation:cwjump 1.6s ease-out both;border-radius:12px}
+@keyframes cwjump{
+  0%   {background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent)}
+  55%  {background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent)}
+  100% {background:transparent;box-shadow:0 0 0 3px transparent}
+}
+/* 움직임을 줄이는 설정에서는 깜빡임 없이 정적으로 표시했다가 JS 가 걷어간다 */
+@media (prefers-reduced-motion: reduce){
+  .jumped{animation:none;background:var(--accent-bg);box-shadow:0 0 0 2px var(--accent)}
+}
+
 /* ══ 1. 라이브 히어로 ══ */
 .hero{flex-shrink:0;padding:18px 24px 16px;background:linear-gradient(180deg,#1e1e24 0%,#15151a 100%);
   border-bottom:1px solid var(--line);display:flex;align-items:center;gap:24px}
@@ -2532,8 +2544,24 @@ function jumpToHash() {
   const h = location.hash.replace(/^#/, "");
   if (!/^m\d+$/.test(h)) return;
   if (TAB !== "raw") { TAB = "raw"; renderTabs(); draw(); }
-  const el = document.getElementById(h);
-  if (el) el.scrollIntoView({ block: "center" });
+  // 탭을 막 그렸으면 요소가 아직 없을 수 있어 한 프레임 뒤에 한 번 더 찾는다.
+  const go = () => {
+    const el = document.getElementById(h);
+    if (!el) return false;
+    el.scrollIntoView({ block: "center" });
+    flashAnchor(el);
+    return true;
+  };
+  if (!go()) requestAnimationFrame(go);
+}
+
+// 이동만 하면 "어디로 왔는지" 눈이 못 따라간다. 그 자리를 잠깐 밝혔다가 되돌린다.
+function flashAnchor(el) {
+  el.classList.remove("jumped");
+  void el.offsetWidth;              // 같은 곳을 연달아 눌러도 다시 재생되도록 리플로우 강제
+  el.classList.add("jumped");
+  clearTimeout(el._jumpT);
+  el._jumpT = setTimeout(() => el.classList.remove("jumped"), 1700);
 }
 
 function boot(payload) {
