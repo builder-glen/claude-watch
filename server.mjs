@@ -144,7 +144,8 @@ async function sessionPayload(sess) {
 
 // 구독 한도(rate_limits)는 statusLine stdin에만 있다 → statusline.sh가 떨군 파일에서 읽는다.
 // 계정 전체 기준(세션별 아님). 데이터 없으면 null.
-const CW_DIR = join(homedir(), ".claude-watch");
+// 설정·캐시·내보내기 기본 위치. 테스트가 실제 사용자 설정을 덮어쓰지 않도록 env 로 바꿀 수 있다.
+const CW_DIR = process.env.CW_HOME || join(homedir(), ".claude-watch");
 const CACHE_DIR = join(CW_DIR, "cache");
 // AI 요약/다이어그램은 claude -p 를 부르는데, 그 호출도 자기 세션 로그를 남긴다.
 // 그냥 두면 사용자 프로젝트 목록에 "다음은 Claude Code 코딩 세션의 작업 기록이다…" 같은
@@ -330,8 +331,23 @@ const VIEWER_PATH = join(__dirname, "public", "viewer.html");
 const LIST_PATH = join(__dirname, "public", "list.html");
 let VIEWER = await readFile(VIEWER_PATH, "utf8");
 let LIST = await readFile(LIST_PATH, "utf8");
-// 개발 모드: 매 요청마다 HTML을 다시 읽어 새로고침만으로 반영(핫리로드). 배포 땐 끄고 메모리 캐시 사용.
-const DEV = process.env.CW_DEV === "1";
+
+// HTML 은 메모리에 두되, 파일이 바뀌면 자동으로 다시 읽는다.
+//
+// 왜 필요한가: statusline.sh 는 포트가 비면 서버를 CW_DEV 없이 자동 기동한다. 그러면 뷰어를
+// 고쳐도 화면이 안 바뀌고, 더 나쁘게는 그 서버로 내보낸 파일이 옛 템플릿으로 만들어진다.
+// 실제로 이 함정 때문에 "CDN 이 이미 제거됐다"는 잘못된 판단을 할 뻔했다.
+// mtime 비교는 페이지 요청당 stat 한 번(HTML 요청은 페이지 로드마다 한 번뿐)이라 사실상 공짜다.
+let viewerMtime = 0, listMtime = 0;
+try { viewerMtime = (await stat(VIEWER_PATH)).mtimeMs; listMtime = (await stat(LIST_PATH)).mtimeMs; } catch {}
+
+async function freshHtml() {
+  try {
+    const [v, l] = await Promise.all([stat(VIEWER_PATH), stat(LIST_PATH)]);
+    if (v.mtimeMs !== viewerMtime) { VIEWER = await readFile(VIEWER_PATH, "utf8"); viewerMtime = v.mtimeMs; }
+    if (l.mtimeMs !== listMtime) { LIST = await readFile(LIST_PATH, "utf8"); listMtime = l.mtimeMs; }
+  } catch {}
+}
 
 // 브라우저는 요청 출처를 Sec-Fetch-Site 로 알려준다.
 //   same-origin = 우리 뷰어 페이지, none = 주소창 직접 입력, cross-site = 다른 사이트가 부름
@@ -358,8 +374,8 @@ const server = http.createServer(async (req, res) => {
   if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config") && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
-  // 개발 모드면 매 요청마다 뷰어/리스트 HTML을 다시 읽어 즉시 반영(서버 재시작 불필요)
-  if (DEV) { VIEWER = await readFile(VIEWER_PATH, "utf8"); LIST = await readFile(LIST_PATH, "utf8"); }
+  // HTML 을 쓰는 경로에서만 파일이 바뀌었는지 확인한다(CW_DEV 없이 떠 있어도 최신이 나간다).
+  if (path === "/" || path.startsWith("/s/") || path.startsWith("/export/")) await freshHtml();
 
   if (path === "/health") return send(res, 200, "text/plain", "ok");
 

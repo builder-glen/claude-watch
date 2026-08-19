@@ -51,7 +51,6 @@ ln -s "$PWD/bin/cw" /usr/local/bin/cw
 |---|---|
 | `node server.mjs` | 서버 실행 (기본 포트 4317) |
 | `CW_PORT=5000 node server.mjs` | 포트 변경 |
-| `CW_DEV=1 node server.mjs` | 개발 모드 — HTML을 매 요청마다 다시 읽음(새로고침만으로 반영) |
 | `cw history` | 최근 세션 목록을 터미널에 출력 |
 | `cw open <n>` | n번 세션을 브라우저로 열기 |
 | `cw web` | 전체 세션 목록 페이지 열기 |
@@ -169,9 +168,8 @@ rm /usr/local/bin/cw            # 심볼릭 링크를 만들었다면
 
 ### 개발 시 주의점
 
-- **statusLine 이 서버를 자동으로 되살린다.** 포트 4317 이 비면 `bin/statusline.sh` 가 서버를 띄우는데,
-  그 서버는 `CW_DEV` 없이 떠서 HTML 을 메모리에 캐시한다 → 뷰어를 고쳐도 화면이 안 바뀐다.
-  `lsof -ti:4317 | xargs kill` 후 `CW_DEV=1 node server.mjs` 로 다시 띄울 것
+- 뷰어 HTML 은 파일이 바뀌면 서버가 자동으로 다시 읽는다(mtime 비교). `statusline.sh` 가
+  자동 기동한 서버에서도 최신 뷰어가 나가므로, 고칠 때마다 서버를 재시작할 필요가 없다.
 - **의존성 0 을 유지한다.** `package.json` 도 없다. 받아서 바로 실행되는 게 이 도구의 장점이다
 - **원본 세션 로그는 읽기 전용.** 수정·삭제하지 않는다
 - 글자 크기는 뷰어의 보기 설정에서 조절한다. 코드의 px 를 직접 만지지 말 것
