@@ -139,6 +139,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
 .btn-resume:hover{border-color:var(--sess);color:var(--ink)}
 .btn-resume:active{transform:scale(0.97)}
+/* 이어하기 옆 (i) — 무엇을 하는 버튼인지 마우스오버로 알려준다 */
+.resumewrap{display:inline-flex;align-items:center;gap:5px}
+.infodot{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;border:1px solid var(--muted-2);color:var(--muted);
+  font-family:var(--mono);font-size:calc(10px * var(--fs) * var(--fs-hero,1));font-weight:800;
+  cursor:default;transition:color 160ms ease,border-color 160ms ease}
+.infodot:hover,.infodot:focus-visible{color:var(--accent-ink);border-color:var(--accent)}
 /* 첫 보관을 미뤄둔 상태 안내 — 터미널에서 못 물어봤을 때의 출구 */
 .archnote{margin:8px 10px;padding:10px 11px;border:1px solid var(--accent);border-radius:9px;
   background:var(--accent-bg);font-size:calc(11.5px * var(--fs) * var(--fs-rail,1));
@@ -970,11 +977,13 @@ function renderHero() {
     ["hero.turns",  metric("주고받은 대화", `<span class="num">${AGG.turns || 0}</span><span class="unit">회</span>`)],
     ["hero.agents", metric("서브에이전트", `<span class="num" style="color:var(--agent)">${agents}</span><span class="unit">개</span>`)],
     ["hero.cost",   metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`)],
-    ["hero.diff",   metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`)],
+    ["hero.diff",   metric("이 세션에서 변경된 라인", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`)],
   ].filter(([k]) => exShow(k)).map(([, html]) => html);
 
   $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
-    + `<button class="btn-resume" id="resumeBtn" data-tip="${esc(resumeCmd())}">이어하기</button>`
+    + `<span class="resumewrap"><button class="btn-resume" id="resumeBtn">이어하기</button>`
+    + `<span class="infodot" tabindex="0" role="img" aria-label="이어하기 사용법"
+        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다 — ${esc(resumeCmd())}">i</span></span>`
     + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
