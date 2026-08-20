@@ -535,7 +535,12 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
 .amsg{display:flex;flex-direction:column;gap:9px}
 /* 턴 = 사용자 발화 1회에 대한 Claude의 연속 응답 묶음. 헤더는 맨 위 한 번만. */
 .turn{display:flex;flex-direction:column;gap:10px}
-.turnhead{position:sticky;top:0;z-index:1;padding:4px 0;background:linear-gradient(180deg,var(--bg) 60%,transparent)}
+/* 턴 헤더는 스크롤 중에도 "지금 누구의 어느 턴을 읽고 있는지"를 알려주려고 붙어 있는다.
+   배경이 도중에 투명으로 끝나면 밑을 지나는 본문이 비쳐 겹쳐 보인다 → 헤더 자체는 불투명하게 두고,
+   아래로 이어지는 페이드는 ::after 로 따로 깐다. */
+.turnhead{position:sticky;top:0;z-index:2;padding:8px 0 6px;background:var(--bg)}
+.turnhead::after{content:"";position:absolute;left:0;right:0;top:100%;height:12px;
+  background:linear-gradient(180deg,var(--bg),transparent);pointer-events:none}
 .turnbody{display:flex;flex-direction:column;gap:11px;padding-left:27px;
   border-left:1px solid var(--line-soft);margin-left:9px}
 .turnbody > .abody{margin:0}
