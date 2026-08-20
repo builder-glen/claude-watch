@@ -76,6 +76,18 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .pulse{animation:cwpulse 1.6s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){ .pulse{animation:none} *{transition-duration:1ms !important} }
 
+/* 동작 결과 토스트 — 상단 중앙에 잠깐 떴다 사라진다 */
+.toast{position:fixed;top:20px;left:50%;z-index:90;
+  transform:translateX(-50%) translateY(-10px);
+  padding:11px 20px;border-radius:10px;
+  background:var(--card);border:1px solid var(--accent);color:var(--ink);
+  font-family:var(--mono);font-weight:700;
+  font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+  opacity:0;pointer-events:none;
+  transition:opacity 180ms var(--ease),transform 180ms var(--ease)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
 /* 앵커로 이동했을 때 그 자리를 잠깐 밝힌다 — 어디로 왔는지 눈이 따라가도록 */
 .jumped{animation:cwjump 1.6s ease-out both;border-radius:12px}
 @keyframes cwjump{
@@ -1835,11 +1847,24 @@ function copyAnchor(m) {
   navigator.clipboard?.writeText(u.toString());
   flash(`링크 복사됨 · #m${m}`);
 }
+// 동작 결과(복사됨·저장됨)를 상단 토스트로 알린다.
+// 예전에는 히어로의 상태 표시(#stat)를 덮어썼는데, 그러면 LIVE 여부가 잠깐 사라지는 데다
+// 눈이 잘 가지 않는 자리라 복사가 됐는지 알기 어려웠다.
+let toastT = null;
 function flash(msg) {
-  const el = $("stat");
-  const old = el.textContent;
+  let el = $("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.className = "toast";
+    el.setAttribute("role", "status");      // 스크린리더에도 알린다
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
   el.textContent = msg;
-  setTimeout(() => { el.textContent = old; }, 1500);
+  el.classList.add("on");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove("on"), 1900);
 }
 
 /* ── 세션 내 검색 ─────────────────────────────────────── */
