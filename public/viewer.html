@@ -121,7 +121,6 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .hero-title{font-size:calc(20px * var(--fs) * var(--fs-hero,1));font-weight:700;color:var(--ink);letter-spacing:-.02em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hero-path{font-family:var(--mono);font-size:calc(12.5px * var(--fs) * var(--fs-hero,1));color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hero-path .sname{color:var(--sess)}
 .hero-r{display:flex;align-items:center;gap:20px;flex-shrink:0}
 .metric{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
 .metric .lab{font-size:calc(11.5px * var(--fs) * var(--fs-hero,1));color:var(--muted);white-space:nowrap}
@@ -139,13 +138,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
 .btn-resume:hover{border-color:var(--sess);color:var(--ink)}
 .btn-resume:active{transform:scale(0.97)}
-/* 이어하기 옆 (i) — 무엇을 하는 버튼인지 마우스오버로 알려준다 */
-.resumewrap{display:inline-flex;align-items:center;gap:5px}
-.infodot{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
-  border-radius:50%;border:1px solid var(--muted-2);color:var(--muted);
-  font-family:var(--mono);font-size:calc(10px * var(--fs) * var(--fs-hero,1));font-weight:800;
-  cursor:default;transition:color 160ms ease,border-color 160ms ease}
-.infodot:hover,.infodot:focus-visible{color:var(--accent-ink);border-color:var(--accent)}
+/* 버튼 안의 (i) — 무엇을 하는 버튼인지 마우스오버로 알려준다.
+   버튼 안에 있으므로 눌러도 그냥 버튼이 눌린다(설명만 보여주는 별도 조작이 아니다). */
+.btn-resume{display:inline-flex;align-items:center;gap:6px}
+.infodot{display:flex;align-items:center;flex-shrink:0;color:var(--muted);
+  transition:color 160ms ease}
+.btn-resume:hover .infodot{color:var(--ink-2)}
+.infodot:hover{color:var(--accent-ink)}
 /* 첫 보관을 미뤄둔 상태 안내 — 터미널에서 못 물어봤을 때의 출구 */
 .archnote{margin:8px 10px;padding:10px 11px;border:1px solid var(--accent);border-radius:9px;
   background:var(--accent-bg);font-size:calc(11.5px * var(--fs) * var(--fs-rail,1));
@@ -925,6 +924,10 @@ function highlightCode() {
   });
 }
 const CLAUDE_ICON = `<svg class="cicon" viewBox="0 0 24 24" aria-hidden="true"><path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"></path></svg>`;
+const INFO_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+  <circle cx="8" cy="4.9" r="0.95" fill="currentColor"/>
+  <path d="M8 7.1v4.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 const EDIT_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
   <path d="M11.4 2.6a1.6 1.6 0 0 1 2.26 2.26L5.9 12.62l-3.02.76.76-3.02 7.76-7.76Z"
     stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -962,7 +965,8 @@ function renderHero() {
   $("htitle").textContent = title;
   $("mname").textContent = title;
   document.title = `${title} · claude-watch`;
-  $("hpath").innerHTML = `${esc(shortPath(SESS.cwd || SESS.project))} · <span class="sname">${esc(title)}</span>`
+  // 제목은 바로 위 htitle 에 이미 크게 찍힌다. 여기서는 "어디서 · 언제"만 말한다.
+  $("hpath").innerHTML = esc(shortPath(SESS.cwd || SESS.project))
     + (st.firstTs ? ` · 시작 ${esc(fmtTs(st.firstTs))}` : "")
     + (st.lastTs ? ` · 마지막 작업 ${esc(fmtTs(st.lastTs))}` : "");
 
@@ -981,9 +985,9 @@ function renderHero() {
   ].filter(([k]) => exShow(k)).map(([, html]) => html);
 
   $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
-    + `<span class="resumewrap"><button class="btn-resume" id="resumeBtn">이어하기</button>`
-    + `<span class="infodot" tabindex="0" role="img" aria-label="이어하기 사용법"
-        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다 — ${esc(resumeCmd())}">i</span></span>`
+    + `<button class="btn-resume" id="resumeBtn">이어하기`
+    + `<span class="infodot" role="img" aria-label="이어하기 사용법"
+        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다 — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
     + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
