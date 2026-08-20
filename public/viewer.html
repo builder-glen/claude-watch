@@ -76,17 +76,26 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .pulse{animation:cwpulse 1.6s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){ .pulse{animation:none} *{transition-duration:1ms !important} }
 
-/* 동작 결과 토스트 — 상단 중앙에 잠깐 떴다 사라진다 */
-.toast{position:fixed;top:20px;left:50%;z-index:90;
-  transform:translateX(-50%) translateY(-10px);
-  padding:11px 20px;border-radius:10px;
+/* 동작 결과 토스트 — 화면 맨 위가 아니라 시선이 자연스럽게 머무는 위쪽 1/6 지점에 띄운다.
+   맨 위(top:20px)에 두면 히어로에 묻혀 눈에 안 들어온다. */
+.toast{position:fixed;top:16vh;left:50%;z-index:90;
+  max-width:min(440px,calc(100vw - 40px));
+  padding:13px 22px;border-radius:12px;text-align:center;line-height:1.6;
   background:var(--card);border:1px solid var(--accent);color:var(--ink);
-  font-family:var(--mono);font-weight:700;
-  font-size:calc(12.5px * var(--fs) * var(--fs-ui,1));
-  box-shadow:0 10px 30px rgba(0,0,0,.5);
+  font-weight:700;font-size:calc(13px * var(--fs) * var(--fs-ui,1));
+  box-shadow:0 14px 40px rgba(0,0,0,.55);
   opacity:0;pointer-events:none;
-  transition:opacity 180ms var(--ease),transform 180ms var(--ease)}
-.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  transform:translateX(-50%) translateY(10px) scale(.96);
+  transition:opacity 200ms var(--ease),transform 200ms var(--ease)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0) scale(1);
+  animation:cwtoast 380ms cubic-bezier(.34,1.56,.64,1) both}
+/* 살짝 튀어올랐다 자리잡는 팝업 */
+@keyframes cwtoast{
+  0%   {opacity:0;transform:translateX(-50%) translateY(14px) scale(.92)}
+  55%  {opacity:1;transform:translateX(-50%) translateY(-3px) scale(1.04)}
+  100% {opacity:1;transform:translateX(-50%) translateY(0)    scale(1)}
+}
+@media (prefers-reduced-motion: reduce){ .toast.on{animation:none} }
 
 /* 앵커로 이동했을 때 그 자리를 잠깐 밝힌다 — 어디로 왔는지 눈이 따라가도록 */
 .jumped{animation:cwjump 1.6s ease-out both;border-radius:12px}
@@ -535,12 +544,10 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
 .amsg{display:flex;flex-direction:column;gap:9px}
 /* 턴 = 사용자 발화 1회에 대한 Claude의 연속 응답 묶음. 헤더는 맨 위 한 번만. */
 .turn{display:flex;flex-direction:column;gap:10px}
-/* 턴 헤더는 스크롤 중에도 "지금 누구의 어느 턴을 읽고 있는지"를 알려주려고 붙어 있는다.
-   배경이 도중에 투명으로 끝나면 밑을 지나는 본문이 비쳐 겹쳐 보인다 → 헤더 자체는 불투명하게 두고,
-   아래로 이어지는 페이드는 ::after 로 따로 깐다. */
-.turnhead{position:sticky;top:0;z-index:2;padding:8px 0 6px;background:var(--bg)}
-.turnhead::after{content:"";position:absolute;left:0;right:0;top:100%;height:12px;
-  background:linear-gradient(180deg,var(--bg),transparent);pointer-events:none}
+/* 턴 헤더는 본문과 같이 흘러간다.
+   예전엔 상단에 고정(sticky)했는데, 읽는 내내 따라다니는 게 거슬리는 데다
+   배경이 반투명이라 밑을 지나는 본문이 비쳐 겹쳐 보였다. */
+.turnhead{padding:2px 0 6px}
 .turnbody{display:flex;flex-direction:column;gap:11px;padding-left:27px;
   border-left:1px solid var(--line-soft);margin-left:9px}
 .turnbody > .abody{margin:0}
@@ -988,7 +995,7 @@ const shq = (s) => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
 
 function copyResume() {
   const cmd = resumeCmd();
-  const done = () => flash("복사됨 · 터미널에 붙여넣으세요");
+  const done = () => flash("✓ 복사되었어요! 터미널에서 붙여넣기 시 이 세션을 이어갈 수 있어요.");
   if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(done, () => prompt("복사해서 터미널에 붙여넣으세요", cmd));
   else prompt("복사해서 터미널에 붙여넣으세요", cmd);
 }
@@ -1867,9 +1874,13 @@ function flash(msg) {
     document.body.appendChild(el);
   }
   el.textContent = msg;
+  el.classList.remove("on");
+  void el.offsetWidth;                       // 연달아 불러도 팝업이 다시 재생되도록
   el.classList.add("on");
+  // 긴 문장은 읽을 시간이 더 필요하다. 글자 수에 따라 늘리되 4초를 넘기지 않는다.
+  const ms = Math.min(4000, 1600 + msg.length * 45);
   clearTimeout(toastT);
-  toastT = setTimeout(() => el.classList.remove("on"), 1900);
+  toastT = setTimeout(() => el.classList.remove("on"), ms);
 }
 
 /* ── 세션 내 검색 ─────────────────────────────────────── */
