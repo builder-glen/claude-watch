@@ -76,6 +76,39 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .pulse{animation:cwpulse 1.6s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){ .pulse{animation:none} *{transition-duration:1ms !important} }
 
+/* 동작 결과 토스트 — 화면 맨 위가 아니라 시선이 자연스럽게 머무는 위쪽 1/6 지점에 띄운다.
+   맨 위(top:20px)에 두면 히어로에 묻혀 눈에 안 들어온다. */
+.toast{position:fixed;top:16vh;left:50%;z-index:90;
+  max-width:min(440px,calc(100vw - 40px));
+  padding:13px 22px;border-radius:12px;text-align:center;line-height:1.6;
+  background:var(--card);border:1px solid var(--accent);color:var(--ink);
+  font-weight:700;font-size:calc(13px * var(--fs) * var(--fs-ui,1));
+  box-shadow:0 14px 40px rgba(0,0,0,.55);
+  opacity:0;pointer-events:none;
+  transform:translateX(-50%) translateY(10px) scale(.96);
+  transition:opacity 200ms var(--ease),transform 200ms var(--ease)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0) scale(1);
+  animation:cwtoast 380ms cubic-bezier(.34,1.56,.64,1) both}
+/* 살짝 튀어올랐다 자리잡는 팝업 */
+@keyframes cwtoast{
+  0%   {opacity:0;transform:translateX(-50%) translateY(14px) scale(.92)}
+  55%  {opacity:1;transform:translateX(-50%) translateY(-3px) scale(1.04)}
+  100% {opacity:1;transform:translateX(-50%) translateY(0)    scale(1)}
+}
+@media (prefers-reduced-motion: reduce){ .toast.on{animation:none} }
+
+/* 앵커로 이동했을 때 그 자리를 잠깐 밝힌다 — 어디로 왔는지 눈이 따라가도록 */
+.jumped{animation:cwjump 1.6s ease-out both;border-radius:12px}
+@keyframes cwjump{
+  0%   {background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent)}
+  55%  {background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent)}
+  100% {background:transparent;box-shadow:0 0 0 3px transparent}
+}
+/* 움직임을 줄이는 설정에서는 깜빡임 없이 정적으로 표시했다가 JS 가 걷어간다 */
+@media (prefers-reduced-motion: reduce){
+  .jumped{animation:none;background:var(--accent-bg);box-shadow:0 0 0 2px var(--accent)}
+}
+
 /* ══ 1. 라이브 히어로 ══ */
 .hero{flex-shrink:0;padding:18px 24px 16px;background:linear-gradient(180deg,#1e1e24 0%,#15151a 100%);
   border-bottom:1px solid var(--line);display:flex;align-items:center;gap:24px}
@@ -88,7 +121,6 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .hero-title{font-size:calc(20px * var(--fs) * var(--fs-hero,1));font-weight:700;color:var(--ink);letter-spacing:-.02em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hero-path{font-family:var(--mono);font-size:calc(12.5px * var(--fs) * var(--fs-hero,1));color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hero-path .sname{color:var(--sess)}
 .hero-r{display:flex;align-items:center;gap:20px;flex-shrink:0}
 .metric{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
 .metric .lab{font-size:calc(11.5px * var(--fs) * var(--fs-hero,1));color:var(--muted);white-space:nowrap}
@@ -106,6 +138,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-weight:700;transition:transform 160ms var(--ease),border-color 160ms var(--ease)}
 .btn-resume:hover{border-color:var(--sess);color:var(--ink)}
 .btn-resume:active{transform:scale(0.97)}
+/* 버튼 안의 (i) — 무엇을 하는 버튼인지 마우스오버로 알려준다.
+   버튼 안에 있으므로 눌러도 그냥 버튼이 눌린다(설명만 보여주는 별도 조작이 아니다). */
+.btn-resume{display:inline-flex;align-items:center;gap:6px}
+.infodot{display:flex;align-items:center;flex-shrink:0;color:var(--muted);
+  transition:color 160ms ease}
+.btn-resume:hover .infodot{color:var(--ink-2)}
+.infodot:hover{color:var(--accent-ink)}
 /* 첫 보관을 미뤄둔 상태 안내 — 터미널에서 못 물어봤을 때의 출구 */
 .archnote{margin:8px 10px;padding:10px 11px;border:1px solid var(--accent);border-radius:9px;
   background:var(--accent-bg);font-size:calc(11.5px * var(--fs) * var(--fs-rail,1));
@@ -422,9 +461,21 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
   border:1px solid var(--line);color:var(--ink-2);transition:transform 160ms var(--ease),color 160ms ease}
 .aibtn:active{transform:scale(0.97)}
 
+/* 서술형 요약 — 불릿이 "무엇을"이면 여기는 "어떻게 흘러갔나".
+   코드 블록처럼 한 덩어리로 감싸 본문과 구분한다. */
+.narr{background:var(--code-bg);border:1px solid var(--line);border-radius:11px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:7px}
+.narr p{margin:0;font-size:calc(13.5px * var(--fs) * var(--fs-sum-bullet,1));color:var(--ink-2);line-height:1.75}
+.narr p:first-child{color:var(--ink)}
+
 /* 의사결정 / 산출물 (기존 기능 유지) */
 .deccard{border-left:2px solid var(--accent);background:var(--block);border-radius:0 11px 11px 0;padding:11px 14px;
   display:flex;flex-direction:column;gap:6px}
+/* 누르면 대화 탭의 그 지점으로 가는 카드 */
+.deccard.lnkcard{cursor:pointer;transition:border-color 160ms var(--ease),background 160ms var(--ease)}
+.deccard.lnkcard:hover{background:var(--card);border-left-color:var(--accent-ink)}
+.deccard.lnkcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.deccard.lnkcard .decq::after{content:" ↗";color:var(--muted-2);font-size:.85em}
 .dechead{font-size:calc(11px * var(--fs) * var(--fs-sum-label,1));font-weight:700;padding:2px 8px;border-radius:5px;background:var(--accent-bg);
   color:var(--accent-ink);flex-shrink:0}
 .decq{font-size:calc(14px * var(--fs) * var(--fs-sum-label,1));color:var(--ink);line-height:1.6}
@@ -499,7 +550,10 @@ code,.icode{font-family:var(--mono);font-size:calc(13.5px * var(--fs) * var(--fs
 .amsg{display:flex;flex-direction:column;gap:9px}
 /* 턴 = 사용자 발화 1회에 대한 Claude의 연속 응답 묶음. 헤더는 맨 위 한 번만. */
 .turn{display:flex;flex-direction:column;gap:10px}
-.turnhead{position:sticky;top:0;z-index:1;padding:4px 0;background:linear-gradient(180deg,var(--bg) 60%,transparent)}
+/* 턴 헤더는 본문과 같이 흘러간다.
+   예전엔 상단에 고정(sticky)했는데, 읽는 내내 따라다니는 게 거슬리는 데다
+   배경이 반투명이라 밑을 지나는 본문이 비쳐 겹쳐 보였다. */
+.turnhead{padding:2px 0 6px}
 .turnbody{display:flex;flex-direction:column;gap:11px;padding-left:27px;
   border-left:1px solid var(--line-soft);margin-left:9px}
 .turnbody > .abody{margin:0}
@@ -870,6 +924,10 @@ function highlightCode() {
   });
 }
 const CLAUDE_ICON = `<svg class="cicon" viewBox="0 0 24 24" aria-hidden="true"><path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"></path></svg>`;
+const INFO_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+  <circle cx="8" cy="4.9" r="0.95" fill="currentColor"/>
+  <path d="M8 7.1v4.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 const EDIT_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
   <path d="M11.4 2.6a1.6 1.6 0 0 1 2.26 2.26L5.9 12.62l-3.02.76.76-3.02 7.76-7.76Z"
     stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -907,7 +965,8 @@ function renderHero() {
   $("htitle").textContent = title;
   $("mname").textContent = title;
   document.title = `${title} · claude-watch`;
-  $("hpath").innerHTML = `${esc(shortPath(SESS.cwd || SESS.project))} · <span class="sname">${esc(title)}</span>`
+  // 제목은 바로 위 htitle 에 이미 크게 찍힌다. 여기서는 "어디서 · 언제"만 말한다.
+  $("hpath").innerHTML = esc(shortPath(SESS.cwd || SESS.project))
     + (st.firstTs ? ` · 시작 ${esc(fmtTs(st.firstTs))}` : "")
     + (st.lastTs ? ` · 마지막 작업 ${esc(fmtTs(st.lastTs))}` : "");
 
@@ -922,11 +981,13 @@ function renderHero() {
     ["hero.turns",  metric("주고받은 대화", `<span class="num">${AGG.turns || 0}</span><span class="unit">회</span>`)],
     ["hero.agents", metric("서브에이전트", `<span class="num" style="color:var(--agent)">${agents}</span><span class="unit">개</span>`)],
     ["hero.cost",   metric("쓴 토큰 · 비용", `<span class="num">${kfmt(totalTok)}</span><span class="sub">${money(cost)}</span>`)],
-    ["hero.diff",   metric("바뀐 코드 줄", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`)],
+    ["hero.diff",   metric("이 세션에서 변경된 라인", `<span class="num" style="color:var(--add)">+${add}</span><span class="sub" style="font-size:calc(17px * var(--fs));font-weight:700;color:var(--del)">−${del}</span>`)],
   ].filter(([k]) => exShow(k)).map(([, html]) => html);
 
   $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
-    + `<button class="btn-resume" id="resumeBtn" data-tip="${esc(resumeCmd())}">이어하기</button>`
+    + `<button class="btn-resume" id="resumeBtn">이어하기`
+    + `<span class="infodot" role="img" aria-label="이어하기 사용법"
+        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다 — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
     + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
@@ -947,7 +1008,7 @@ const shq = (s) => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
 
 function copyResume() {
   const cmd = resumeCmd();
-  const done = () => flash("복사됨 · 터미널에 붙여넣으세요");
+  const done = () => flash("✓ 복사되었어요! 터미널에서 붙여넣기 시 이 세션을 이어갈 수 있어요.");
   if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(done, () => prompt("복사해서 터미널에 붙여넣으세요", cmd));
   else prompt("복사해서 터미널에 붙여넣으세요", cmd);
 }
@@ -1018,7 +1079,23 @@ function renderSummary() {
   // 1) 한 줄 결론 + 불릿 3개 (AI, 캐시 사용)
   parts.push(`<div id="aiSum"></div>`);
 
-  // 2) 무엇이 이 세션을 돌렸나 — 스킬 / 도구
+  // 2) 의사결정 — 이 세션에서 사람이 실제로 고른 것. 집계보다 위에 둔다.
+  //    누르면 대화 탭의 그 지점으로 이동한다(#m<앵커>).
+  const decs = a.decisions || [];
+  if (decs.length) {
+    parts.push(`<div class="pane" style="gap:10px">
+      <div class="sechead"><div class="seclab">의사결정 ${decs.length}건</div><div class="spacer"></div>
+        <div class="secmeta">누르면 대화의 그 지점으로 이동합니다</div></div>
+      <div class="pane" style="gap:8px">${decs.map(d => `<div class="deccard${d.m != null ? " lnkcard" : ""}"
+        ${d.m != null ? `data-goto="${d.m}" role="button" tabindex="0" data-tip="대화 탭 #m${d.m} 으로 이동"` : ""}>
+        <div style="display:flex;gap:9px;align-items:flex-start">
+          ${d.header ? `<span class="dechead">${esc(d.header)}</span>` : ""}
+          <span class="decq">${esc(d.question)}</span></div>
+        ${d.chosen ? `<div class="decc">✅ ${esc(d.chosen)}</div>` : ""}</div>`).join("")}</div>
+    </div>`);
+  }
+
+  // 3) 무엇이 이 세션을 돌렸나 — 스킬 / 도구
   const skills = a.skills || [];
   const skTok = skills.reduce((s, x) => s + x.tokens, 0);
   const tools = (a.tools && a.tools.list) || [];
@@ -1077,20 +1154,11 @@ function renderSummary() {
     </div>`);
   }
 
-  // 5) 의사결정 · 산출물 (기존 claude-watch 기능 유지)
-  const decs = a.decisions || [];
+  // 6) 산출물 (의사결정은 위로 올렸다)
   const files = a.files || [];
-  if (decs.length || files.length) {
+  if (files.length) {
     parts.push(`<div class="divider"></div>`);
-    if (decs.length) parts.push(`<div class="pane" style="gap:10px">
-      <div class="sechead"><div class="seclab">의사결정 ${decs.length}건</div></div>
-      <div class="pane" style="gap:8px">${decs.map(d => `<div class="deccard">
-        <div style="display:flex;gap:9px;align-items:flex-start">
-          ${d.header ? `<span class="dechead">${esc(d.header)}</span>` : ""}
-          <span class="decq">${esc(d.question)}</span></div>
-        ${d.chosen ? `<div class="decc">✅ ${esc(d.chosen)}</div>` : ""}</div>`).join("")}</div>
-    </div>`);
-    if (files.length) {
+    {
       const hot = [...files].sort((x, y) => y.touches - x.touches).slice(0, 5);
       parts.push(`<div class="grid2">
         <div class="pane" style="gap:10px">
@@ -1113,7 +1181,22 @@ function renderSummary() {
 
   wrap.innerHTML = parts.join("");
   view.appendChild(wrap);
+
+  // 의사결정 → 대화 탭의 그 지점. jumpToHash 가 탭 전환·스크롤을 이미 처리한다.
+  wrap.querySelectorAll("[data-goto]").forEach((el) => {
+    const go = () => gotoAnchor(el.dataset.goto);
+    el.onclick = go;
+    el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(); } };
+  });
+
   renderAiSummary();
+}
+
+// 대화 탭의 #m<번호> 로 이동. 주소창 해시도 같이 바꿔 뒤로가기로 돌아올 수 있게 한다.
+function gotoAnchor(m) {
+  if (m == null) return;
+  location.hash = "m" + m;
+  jumpToHash();
 }
 
 function agentRow(x) {
@@ -1128,6 +1211,17 @@ function agentRow(x) {
     ${stat}
     <span class="atok">${x.tokens != null ? kfmt(x.tokens) : "—"}</span>
   </div>`;
+}
+
+// 불릿이 "무엇을 했나"라면 서술은 "어떻게 흘러갔나"다.
+// 요청 → 작업 → 막힌 지점 → 남은 것 순으로, 처음 보는 사람이 읽을 수 있게.
+// 옛 캐시에는 narrative 가 없으므로 없으면 그냥 그리지 않는다(재생성하면 붙는다).
+function narrativeBlock(text) {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  const lines = t.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, 8);
+  if (!lines.length) return "";
+  return `<div class="narr">${lines.map((l) => `<p>${inlineCode(l)}</p>`).join("")}</div>`;
 }
 
 /* AI 한 줄 결론 + 불릿 — 캐시가 있으면 즉시, 없으면 버튼 */
@@ -1151,7 +1245,8 @@ async function renderAiSummary() {
       box.innerHTML = `<div class="pane" style="gap:22px">
         <div class="headline">${esc(o.headline)}</div>
         <div class="bullets">${(o.bullets || []).slice(0, 3).map(b =>
-          `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>${foot}</div>`;
+          `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
+        ${narrativeBlock(o.narrative)}${foot}</div>`;
     } else {
       box.innerHTML = `<div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>
         <div class="abody">${md(String(data.text || ""))}</div>${foot}</div>`;
@@ -1777,11 +1872,28 @@ function copyAnchor(m) {
   navigator.clipboard?.writeText(u.toString());
   flash(`링크 복사됨 · #m${m}`);
 }
+// 동작 결과(복사됨·저장됨)를 상단 토스트로 알린다.
+// 예전에는 히어로의 상태 표시(#stat)를 덮어썼는데, 그러면 LIVE 여부가 잠깐 사라지는 데다
+// 눈이 잘 가지 않는 자리라 복사가 됐는지 알기 어려웠다.
+let toastT = null;
 function flash(msg) {
-  const el = $("stat");
-  const old = el.textContent;
+  let el = $("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.className = "toast";
+    el.setAttribute("role", "status");      // 스크린리더에도 알린다
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
   el.textContent = msg;
-  setTimeout(() => { el.textContent = old; }, 1500);
+  el.classList.remove("on");
+  void el.offsetWidth;                       // 연달아 불러도 팝업이 다시 재생되도록
+  el.classList.add("on");
+  // 긴 문장은 읽을 시간이 더 필요하다. 글자 수에 따라 늘리되 4초를 넘기지 않는다.
+  const ms = Math.min(4000, 1600 + msg.length * 45);
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove("on"), ms);
 }
 
 /* ── 세션 내 검색 ─────────────────────────────────────── */
@@ -2486,8 +2598,24 @@ function jumpToHash() {
   const h = location.hash.replace(/^#/, "");
   if (!/^m\d+$/.test(h)) return;
   if (TAB !== "raw") { TAB = "raw"; renderTabs(); draw(); }
-  const el = document.getElementById(h);
-  if (el) el.scrollIntoView({ block: "center" });
+  // 탭을 막 그렸으면 요소가 아직 없을 수 있어 한 프레임 뒤에 한 번 더 찾는다.
+  const go = () => {
+    const el = document.getElementById(h);
+    if (!el) return false;
+    el.scrollIntoView({ block: "center" });
+    flashAnchor(el);
+    return true;
+  };
+  if (!go()) requestAnimationFrame(go);
+}
+
+// 이동만 하면 "어디로 왔는지" 눈이 못 따라간다. 그 자리를 잠깐 밝혔다가 되돌린다.
+function flashAnchor(el) {
+  el.classList.remove("jumped");
+  void el.offsetWidth;              // 같은 곳을 연달아 눌러도 다시 재생되도록 리플로우 강제
+  el.classList.add("jumped");
+  clearTimeout(el._jumpT);
+  el._jumpT = setTimeout(() => el.classList.remove("jumped"), 1700);
 }
 
 function boot(payload) {
