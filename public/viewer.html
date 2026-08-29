@@ -987,7 +987,7 @@ function renderHero() {
   $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
     + `<button class="btn-resume" id="resumeBtn">이어하기`
     + `<span class="infodot" role="img" aria-label="이어하기 사용법"
-        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다 — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
+        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다.${resumeWeight()} — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
     + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
@@ -995,6 +995,15 @@ function renderHero() {
     $("exportBtn").onclick = doExport;
     $("resumeBtn").onclick = copyResume;
   }
+}
+
+// 이어받기는 공짜가 아니다 — 대화는 매 턴 통째로 다시 전송된다. 터미널도 세션이 무거우면
+// "요약으로 이어받기"를 권하는데, 그 경고를 누르기 전에 여기서 미리 보여준다.
+// 누적 사용량(USAGE.total)이 아니라 마지막 턴의 맥락 크기(ctx)여야 그 숫자와 맞는다.
+function resumeWeight() {
+  const ctx = (USAGE && USAGE.ctx) || 0;
+  if (!ctx) return "";
+  return ` 이 세션의 맥락은 ${kfmt(ctx)} 토큰 — 전체로 이어받으면 매 턴 이만큼을 다시 보냅니다`;
 }
 
 // 이 도구를 만든 첫 번째 이유가 "탭을 실수로 닫았을 때 찾기"인데, 찾고 나서 돌아갈
