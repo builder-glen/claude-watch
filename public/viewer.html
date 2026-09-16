@@ -987,13 +987,13 @@ function renderHero() {
   $("metrics").innerHTML = cells.join(`<div class="vr"></div>`)
     + `<button class="btn-resume" id="resumeBtn">이어하기`
     + `<span class="infodot" role="img" aria-label="이어하기 사용법"
-        data-tip="터미널에서 이 세션을 다시 여는 명령을 복사합니다. 붙여넣고 실행하면 대화 맥락이 그대로 이어집니다.${resumeWeight()} — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
+        data-tip="이 세션을 터미널에서 다시 엽니다 — 명령을 복사하거나 터미널 새 탭에서 바로 실행할 수 있습니다. 대화 맥락이 그대로 이어집니다.${resumeWeight()} — ${esc(resumeCmd())}">${INFO_ICON}</span></button>`
     + `<button class="btn-export" id="exportBtn">Export</button>`;
   // 내보낸 파일에서는 둘 다 의미가 없다(붙여넣을 터미널도, 저장할 서버도 없다).
   if (EXPORT) { $("exportBtn").remove(); $("resumeBtn").remove(); }
   else {
     $("exportBtn").onclick = doExport;
-    $("resumeBtn").onclick = copyResume;
+    $("resumeBtn").onclick = openResume;
   }
 }
 
@@ -1020,6 +1020,49 @@ function copyResume() {
   const done = () => flash("✓ 복사되었어요! 터미널에서 붙여넣기 시 이 세션을 이어갈 수 있어요.");
   if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(done, () => prompt("복사해서 터미널에 붙여넣으세요", cmd));
   else prompt("복사해서 터미널에 붙여넣으세요", cmd);
+}
+// 복사만 하던 버튼에 "터미널에서 바로 열기"를 더한다. 브라우저 confirm() 은 버튼 문구를
+// 바꿀 수 없어서 자체 팝업을 쓴다. 터미널 실행은 브라우저가 못 하므로 로컬 서버가 맡는다.
+async function openResume() {
+  document.getElementById("resumedlg")?.remove();
+  let app = null;
+  try { app = (await (await fetch("/api/resume-terminal")).json()).app; } catch {}
+  const dlg = document.createElement("div");
+  dlg.id = "resumedlg";
+  dlg.className = "modal";
+  // 같은 세션을 두 곳에서 동시에 이어가면 대화 기록이 서로 섞일 수 있다 — 막지는 않고 알린다.
+  const live = isLive() ? `<div class="sd" style="color:var(--del)">⚠ 이 세션은 최근 5분 안에 활동이 있었어요. 다른 터미널에서 아직 진행 중이라면, 같은 세션을 두 곳에서 열 때 대화가 꼬일 수 있어요.</div>` : "";
+  dlg.innerHTML = `<div class="sheet">
+    <div class="sh">세션 이어하기</div>
+    <div class="sd">터미널에서 이 세션을 다시 열어 대화 맥락을 그대로 이어갑니다.${esc(resumeWeight())}</div>
+    <div class="fi mono" style="word-break:break-all">${esc(resumeCmd())}</div>
+    ${live}
+    <div class="acts">
+      <button class="btn-sec" id="resumeCancel">취소</button>
+      <button class="btn-sec" id="resumeCopy">명령어 복사</button>
+      ${app ? `<button class="btn-primary" id="resumeRun">${esc(app)}에서 열기</button>` : ""}
+    </div>
+    <div class="sd" id="resumeMsg"></div>
+  </div>`;
+  document.body.appendChild(dlg);
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const close = () => { dlg.remove(); document.removeEventListener("keydown", onKey); };
+  document.addEventListener("keydown", onKey);
+  dlg.onclick = (e) => { if (e.target === dlg) close(); };
+  $("resumeCancel").onclick = close;
+  $("resumeCopy").onclick = () => { close(); copyResume(); };
+  if (app) $("resumeRun").onclick = async () => {
+    const btn = $("resumeRun"); btn.disabled = true; btn.textContent = "여는 중…";
+    try {
+      const d = await (await fetch(`/api/resume-terminal?id=${encodeURIComponent(SESSION)}`, { method: "POST" })).json();
+      if (d.error) throw new Error(d.error);
+      close();
+      flash(`✓ ${app}에서 이 세션을 열었어요.`);
+    } catch (e) {
+      $("resumeMsg").innerHTML = `<span style="color:var(--del)">열기 실패: ${esc(e.message)} — 명령어 복사를 이용해 주세요.</span>`;
+      btn.disabled = false; btn.textContent = `${app}에서 열기`;
+    }
+  };
 }
 const metric = (lab, val) => `<div class="metric"><div class="lab">${lab}</div><div class="val">${val}</div></div>`;
 
