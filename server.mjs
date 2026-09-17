@@ -9,7 +9,7 @@
 
 import http from "node:http";
 import { readFile, readdir, stat, mkdir, writeFile, rm, unlink } from "node:fs/promises";
-import { watch } from "node:fs";
+import { watch, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
@@ -470,7 +470,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
-  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config" || path === "/api/archive") && !sameOriginOnly(req))
+  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config" || path === "/api/archive" || path === "/api/resume-terminal") && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // HTML 을 쓰는 경로에서만 파일이 바뀌었는지 확인한다(CW_DEV 없이 떠 있어도 최신이 나간다).
@@ -552,6 +552,24 @@ const server = http.createServer(async (req, res) => {
       deferred: !!(consent && consent.deferred),           // 첫 보관을 미뤄둔 상태
       pendingBytes: consent && consent.deferred ? consent.bytes : 0,
     }));
+  }
+
+  // 이어하기 — 복사·붙여넣기 없이 터미널 탭에서 바로 claude --resume 을 띄운다.
+  // GET 은 어떤 터미널로 열지(버튼 문구용), POST 는 실제 실행.
+  // 명령은 클라이언트가 보낸 문자열이 아니라 세션 id 로 서버가 직접 만든다(임의 명령 실행 방지).
+  if (path === "/api/resume-terminal") {
+    const app = terminalApp();
+    if (req.method !== "POST") return send(res, 200, "application/json", JSON.stringify({ app }));
+    if (!app) return send(res, 200, "application/json", JSON.stringify({ error: "이 플랫폼에서는 터미널을 열 수 없습니다" }));
+    const id = url.searchParams.get("id") || "";
+    const file = /^[\w-]+$/.test(id) ? await pathForSession(id) : null;
+    if (!file) return send(res, 404, "application/json", JSON.stringify({ error: "session not found" }));
+    const cwd = extractCwd(await readFile(file, "utf8"));
+    const cmd = (cwd ? `cd ${shq(cwd)} && ` : "") + `claude --resume ${id}`;
+    return openInTerminal(app, cmd).then(
+      () => send(res, 200, "application/json", JSON.stringify({ ok: true, app })),
+      (e) => send(res, 200, "application/json", JSON.stringify({ error: String(e?.message || e) }))
+    );
   }
 
   // 내보내기 설정 — 내보낼 때마다 체크박스를 다시 고르지 않도록 한 번 정해두고 재사용한다.
@@ -792,6 +810,53 @@ function pickFolder(start) {
   });
 }
 
+// iTerm2 가 있으면 iTerm2, 없으면 macOS 기본 Terminal. macOS 가 아니면 null.
+function terminalApp() {
+  if (process.platform !== "darwin") return null;
+  const iterm = ["/Applications/iTerm.app", join(homedir(), "Applications", "iTerm.app")].some((p) => existsSync(p));
+  return iterm ? "iTerm2" : "Terminal";
+}
+// 경로에 공백·따옴표가 있어도 셸에서 한 덩어리로 읽히도록 작은따옴표로 감싼다(뷰어의 shq 와 같은 규칙).
+const shq = (s) => `'` + String(s).replace(/'/g, `'\\''`) + `'`;
+
+// 명령은 AppleScript 소스에 끼워 넣지 않고 argv 로 넘긴다 — 따옴표가 섞여도 스크립트가 깨지지 않는다.
+function openInTerminal(app, cmd) {
+  const script = app === "iTerm2"
+    ? [
+        "on run argv",
+        'tell application "iTerm2"',
+        "activate",
+        // 창이 없으면 새 창, 있으면 현재 창에 새 탭
+        "if (count of windows) = 0 then",
+        "create window with default profile",
+        "tell current session of current window to write text (item 1 of argv)",
+        "else",
+        "tell current window",
+        "set t to (create tab with default profile)",
+        "tell current session of t to write text (item 1 of argv)",
+        "end tell",
+        "end if",
+        "end tell",
+        "end run",
+      ]
+    : ["on run argv", 'tell application "Terminal"', "activate", "do script (item 1 of argv)", "end tell", "end run"];
+  const args = script.flatMap((l) => ["-e", l]).concat(cmd);
+  return new Promise((resolve, reject) => {
+    const child = spawn("osascript", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    const killer = setTimeout(() => child.kill("SIGKILL"), 30000);
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", (e) => { clearTimeout(killer); reject(e); });
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      if (code === 0) return resolve();
+      // -1743: 시스템 설정에서 자동화 권한을 거부한 경우
+      if (/-1743/.test(err)) return reject(new Error(`${app} 제어 권한이 없습니다 — 시스템 설정 › 개인정보 보호 및 보안 › 자동화에서 허용해 주세요`));
+      reject(new Error(err.trim() || `osascript exited ${code}`));
+    });
+  });
+}
+
 function send(res, code, type, body) {
   res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-cache" });
   res.end(body);
@@ -940,10 +1005,18 @@ const PROMPTS = {
   // 요약 탭의 '한 줄 결론 + 불릿 3개' 형태에 맞춰 JSON으로 받는다.
   summary:
     "다음은 Claude Code 코딩 세션의 작업 기록이다. 한국어로 요약하되 아래 JSON만 출력하라(코드펜스·설명 금지).\n" +
-    '{"headline":"이 세션이 결국 무엇을 했는지 한 문장(60자 내외, 명사형 종결 금지)",' +
-    '"bullets":["왜/무엇을 바꿨는지 한 문장","두 번째","세 번째"]}\n' +
-    "불릿은 정확히 3개. 파일명·함수명은 그대로 쓰고 군더더기 금지.\n" +
-    "첫 글자는 반드시 { 여야 한다. 인사말·설명·코드펜스를 앞뒤에 붙이지 마라.\n\n",
+    "필수 필드는 headline · bullets · narrative 세 개다. 하나라도 빠뜨리면 안 된다.\n\n" +
+    '{"headline":"...","bullets":["...","...","..."],"narrative":"...\\n...\\n..."}\n\n' +
+    "headline — 이 세션이 결국 무엇을 했는지 한 문장(60자 내외, 명사형 종결 금지)\n" +
+    "bullets  — 왜/무엇을 바꿨는지. 정확히 3개. 파일명·함수명은 그대로 쓰고 군더더기 금지\n" +
+    "narrative — 6~8줄 서술형. 줄 사이는 \\n 으로 구분한다(배열이 아니라 하나의 문자열).\n" +
+    "  이 세션을 처음 보는 사람에게 들려주듯 시간 순으로 쓴다:\n" +
+    "    사용자가 무엇을 요청했는지 → 그래서 무엇을 만들었/고쳤는지\n" +
+    "    → 도중에 어떤 문제·막힌 지점이 있었고 어떻게 풀었는지 → 무엇이 남았는지\n" +
+    "  **한 줄에 완결된 문장 하나**를 쓴다. 문장을 줄바꿈으로 자르지 마라.\n" +
+    "  한 문장이 길어지면 줄을 늘리지 말고 문장을 나눠라. 불릿 기호(·, -)는 넣지 않는다.\n" +
+    "  bullets 와 같은 말을 반복하지 마라. bullets 가 '무엇을'이면 narrative 는 '어떻게 흘러갔나'다.\n\n" +
+    "첫 글자는 반드시 { 여야 한다. 인사말·설명·코드펜스(```)를 앞뒤에 붙이지 마라.\n\n",
   diagram:
     "다음 코딩 세션의 변경을 Mermaid flowchart로 그려라. 코드펜스(```) 없이 mermaid 텍스트만 출력. " +
     "파일/모듈 간 관계와 데이터 흐름 중심으로, 한눈에 구조가 보이게. 노드는 한국어 라벨 가능.\n\n",
