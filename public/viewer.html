@@ -912,8 +912,37 @@ function modelChip(model) {
   const f = famOf(model);
   return `<span class="mchip m-${f}"><i></i><span>${esc(shortModel(model))}</span></span>`;
 }
+// 대화 본문은 신뢰할 수 없는 입력이다 — Claude 가 웹에서 읽어 온 글이 그대로 섞인다.
+// marked 는 본문 속 HTML 을 통과시키므로 <img onerror=…> 나 [링크](javascript:…) 가 살아남아,
+// 뷰어에서(그리고 내보낸 파일을 받은 사람의 컴퓨터에서) 실행됐다. 그리기 전에 걸러낸다.
+// <template> 안의 DOM 은 비활성이라 걸러내는 동안 스크립트가 돌거나 이미지가 요청되지 않는다.
+const MD_DROP = "script,iframe,object,embed,style,link,meta,base,form,button,textarea,select,svg,math,audio,video,source";
+const SAFE_URL = /^(https?:|mailto:|#|\/|\.)/i;
+function sanitizeHtml(html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  tpl.content.querySelectorAll(MD_DROP).forEach((el) => el.remove());
+  tpl.content.querySelectorAll("*").forEach((el) => {
+    for (const a of [...el.attributes]) {
+      const n = a.name.toLowerCase();
+      if (n.startsWith("on") || n === "style" || n === "srcdoc") el.removeAttribute(a.name);
+      else if ((n === "href" || n === "src" || n === "xlink:href" || n === "action" || n === "formaction")
+        && !SAFE_URL.test(a.value.trim()) && !(n === "src" && /^data:image\//i.test(a.value.trim()))) el.removeAttribute(a.name);
+    }
+    // 외부 이미지는 여는 것만으로 그 서버에 기록이 남는다(내보낸 파일은 외부에 아무것도 요청하지 않는다는 원칙).
+    if (el.tagName === "IMG" && /^https?:/i.test(el.getAttribute("src") || "")) {
+      const a = document.createElement("a");
+      a.href = el.getAttribute("src"); a.textContent = `🖼 ${el.getAttribute("alt") || "이미지"}`;
+      el.replaceWith(a);
+    }
+    // 체크리스트(- [ ])의 체크박스만 남긴다
+    if (el.tagName === "INPUT" && (el.getAttribute("type") !== "checkbox" || !el.hasAttribute("disabled"))) return el.remove();
+    if (el.tagName === "A" && !(el.getAttribute("href") || "").startsWith("#")) { el.setAttribute("rel", "noopener noreferrer"); el.setAttribute("target", "_blank"); }
+  });
+  return tpl.innerHTML;
+}
 function md(t) {
-  try { return window.marked ? marked.parse(String(t || ""), { breaks: true }) : esc(t); }
+  try { return window.marked ? sanitizeHtml(marked.parse(String(t || ""), { breaks: true })) : esc(t); }
   catch { return esc(t); }
 }
 function highlightCode() {
@@ -954,6 +983,11 @@ function renderHero() {
   const stEl = $("stat");
   stEl.className = "statustext" + (live ? "" : " off");
   stEl.textContent = live ? `RUNNING · ${dur(durMs)}` : `종료 · 총 ${dur(durMs)}`;
+  // 받는 사람이 "이게 무엇인지" 알 수 있게 — 언제 뽑은 사본이고, 무엇이 가려지거나 빠졌는지.
+  if (EXPORT) {
+    const at = EXPORT.exportedAt ? new Date(EXPORT.exportedAt).toLocaleDateString("ko-KR") : "";
+    stEl.textContent = ["📄 내보낸 사본", at, EXPORT.masked ? "민감정보 가림" : "", EXPORT.light === "light" ? "도구 출력 일부 생략" : ""].filter(Boolean).join(" · ");
+  }
 
   const models = (AGG.models && AGG.models.list) || [];
   const cur = (AGG.models && AGG.models.current) || (models[0] && models[0].model) || "";
@@ -1076,6 +1110,7 @@ function isLive() {
   return (Date.now() - new Date(last).getTime()) < 5 * 60 * 1000; // 5분 내 활동 = 진행 중
 }
 function sessionTitle() {
+  if (EXPORT && SESS && SESS.title) return SESS.title;   // 내보낸 파일에는 색인이 없다 — 서버가 실어 준 제목을 쓴다
   const row = INDEX.find(x => x.id === SESSION);
   if (row && row.title) return row.title;
   const u = EVENTS.find(e => e.kind === "user_text" && e.text);
@@ -1099,7 +1134,8 @@ function renderTabs() {
   $("tabs").querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
   $("mobtabs").innerHTML = TABS.map(t =>
     `<button data-tab="${t.id}" class="${t.id === TAB ? "on" : ""}">${t.label}</button>`).join("")
-    + `<button data-tab="__rail">세션</button>`;
+    // 내보낸 파일에는 돌아갈 목록이 없다 — 받은 사람이 누르면 빈 화면으로 갔다.
+    + (EXPORT ? "" : `<button data-tab="__rail">세션</button>`);
   $("mobtabs").querySelectorAll("button").forEach(b => b.onclick = () => {
     if (b.dataset.tab === "__rail") { location.href = "/"; return; }
     setTab(b.dataset.tab);
@@ -2276,7 +2312,10 @@ const shown = (c, k) => (c.show || {})[k] !== false;
 function cfgSummary(c) {
   const off = [];
   for (const [, list] of (exportElements || [])) for (const [k, lab] of list) if (!shown(c, k)) off.push(lab);
+  // 가림이 꺼진 채 공유되는 게 가장 위험하다 — 요약의 맨 앞에서 빨갛게 알린다.
+  const warn = shown(c, "file.mask") ? "" : `<b style="color:var(--del)">⚠ 민감정보 가림 꺼짐</b> · `;
   if (!off.length) return `<b>전부 포함</b>`;
+  if (warn) return warn + `<span class="sd">${off.length}개 항목 뺌</span>`;
   const head = off.slice(0, 3).join(" · ");
   return `<b>${off.length}개 항목 뺌</b> <span class="sd">${esc(head)}${off.length > 3 ? ` 외 ${off.length - 3}개` : ""}</span>`;
 }
@@ -2330,12 +2369,15 @@ function openExportCfg(onDone) {
   const bind = () => {
     dlg.querySelectorAll("[data-el]").forEach((b) => b.onchange = () => {
       c.show = c.show || {}; c.show[b.dataset.el] = b.checked; draw();
+      if (b.dataset.el === "file.mask" && !b.checked)
+        $("cfgMsg").innerHTML = `<span style="color:var(--del)">⚠ 가림을 끄면 API 키·비밀번호·이메일이 파일에 그대로 들어가요. 남에게 보낼 파일이라면 켜 두세요.</span>`;
     });
     dlg.querySelectorAll("[data-group]").forEach((b) => b.onclick = () => {
       const list = (exportElements.find(([g]) => g === b.dataset.group) || [null, []])[1];
       const turnOff = list.every(([k]) => shown(c, k));
       c.show = c.show || {};
-      for (const [k] of list) c.show[k] = !turnOff;
+      // "모두 끄기" 한 번에 민감정보 가림까지 꺼지면 안 된다 — 가림은 직접 체크를 풀 때만 꺼진다.
+      for (const [k] of list) if (!(turnOff && k === "file.mask")) c.show[k] = !turnOff;
       draw();
     });
     $("cfgCancel").onclick = () => { clearPreview(); dlg.remove(); };
@@ -2412,7 +2454,7 @@ async function doExport() {
     </div>`;
   document.body.appendChild(dlg);
 
-  const close = () => dlg.remove();
+  const close = () => { dlg.remove(); document.removeEventListener("keydown", esc2); };
   $("exCancel").onclick = close;
 
   const paintCfg = () => { $("exCfgSum").innerHTML = cfgSummary(exportCfg); };
@@ -2431,9 +2473,14 @@ async function doExport() {
     finally { pick.disabled = false; }
   };
   dlg.onclick = (e) => { if (e.target === dlg) close(); };
-  document.addEventListener("keydown", function esc2(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
-  });
+  // 위에 설정창이 떠 있을 때의 Esc 는 설정창 몫이다. 예전엔 아래의 이 창이 닫히고 설정창만 남았다.
+  const esc2 = (e) => {
+    if (e.key !== "Escape") return;
+    const cfg = document.getElementById("cfgdlg");
+    if (cfg) { clearPreview(); cfg.remove(); return; }
+    close();
+  };
+  document.addEventListener("keydown", esc2);
   $("exName").focus(); $("exName").select();
   // 형식에 따라 안내 문구만 바꾼다. 확장자는 서버가 형식에 맞춰 붙인다.
   const fmt = () => (dlg.querySelector('input[name="exFmt"]:checked') || {}).value || "html";
@@ -2468,10 +2515,12 @@ async function doExport() {
       msg.innerHTML = `<span style="color:var(--add)">저장됨</span> <span class="icode">${esc(homey(d.path))}</span>`
         + (size ? ` <span class="sd">${size}</span>` : "")
         + (lightInfo ? `<br>${esc(lightInfo)}` : "")
-        + (detail ? `<br>${esc(detail)}` : "");
+        + (detail ? `<br>${esc(detail)}` : "")
+        // 정규식 탐지는 완벽할 수 없다 — "가렸다"를 과신하지 않도록 매번 알린다.
+        + (m ? `<br><span class="sd">자동 탐지는 완벽하지 않아요. 공유 전에 한 번 훑어봐 주세요.</span>` : "");
       flash(`저장됨: ${d.file}`);
       go.textContent = "완료";
-      setTimeout(close, m && m.total ? 3200 : 1400);
+      setTimeout(close, m ? 6000 : 1400);
     } catch (e) {
       msg.innerHTML = `<span style="color:var(--del)">실패: ${esc(e.message)}</span>`;
       go.disabled = false; go.textContent = "내보내기";
@@ -2709,6 +2758,11 @@ if (EXPORT) {
   fetch(`/api/session/${SESSION}`).then(async (r) => {
     if (r.status === 404) return renderNotFound();
     boot(await r.json());
+    // 목록의 [내보내기] 는 여기로 보낸다 — 저장 위치·형식·가림 상태를 보고 고를 수 있게.
+    if (new URLSearchParams(location.search).get("export") === "1") {
+      history.replaceState(null, "", location.pathname);   // 새로고침할 때 창이 다시 뜨지 않게
+      doExport();
+    }
 
     const es = new EventSource(`/events/${SESSION}`);
     es.addEventListener("init", (m) => {
