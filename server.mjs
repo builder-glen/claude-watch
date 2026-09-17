@@ -11,8 +11,8 @@ import http from "node:http";
 import { readFile, readdir, stat, mkdir, writeFile, rm, unlink } from "node:fs/promises";
 import { watch, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { join, basename } from "node:path";
-import { homedir } from "node:os";
+import { join, basename, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import {
@@ -468,7 +468,31 @@ function sameOriginOnly(req) {
 }
 const MUTATING = /^\/(export|api\/(rename|setproject|ai|pick-folder|diagram-svg))\//;
 
-const server = http.createServer(async (req, res) => {
+// 이 서버는 인증이 없다. "내 브라우저가 내 주소로 보낸 요청"만 받는 것이 유일한 방어선이다.
+// 악성 사이트가 자기 도메인을 127.0.0.1 로 가리키게 만들면(DNS 리바인딩) 브라우저는 같은 출처라고
+// 믿고 세션 전문을 읽어 간다. 그 요청은 Host 헤더가 그 도메인이므로 여기서 걸러진다.
+// CW_HOST 로 일부러 연 경우에는 어떤 이름으로 접속할지 알 수 없어 검사하지 않는다.
+const LOOPBACK_ONLY = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+function hostAllowed(req) {
+  if (!LOOPBACK_ONLY) return true;
+  const h = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+  return h === "127.0.0.1" || h === "localhost" || h === "[::1]";
+}
+
+// 요청 하나의 예외가 프로세스를 죽이면 안 된다. `GET //` 한 줄로 new URL 이 던져 서버가 꺼졌었다 —
+// 아무 웹페이지나 <img src="http://localhost:4317//"> 로 뷰어를 끌 수 있었다는 뜻이다.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    try {
+      if (!res.headersSent) send(res, e instanceof TypeError && /URL/i.test(e.message) ? 400 : 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));
+      else res.end();
+    } catch {}
+  });
+});
+process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e?.message || e));
+
+async function handle(req, res) {
+  if (!hostAllowed(req)) return send(res, 403, "application/json", JSON.stringify({ error: "허용되지 않은 Host" }));
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
@@ -754,9 +778,10 @@ const server = http.createServer(async (req, res) => {
       out.show = show;
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
-      // </script> 만 닫힘 방지로 이스케이프.
+      // "<" 를 전부 \u003c 로 바꾼다. </script> 만 막아서는 부족했다 — 데이터에 "<!--<script" 가 있고
+      // 뒤에 "-->" 가 없으면 브라우저가 페이지 끝까지를 스크립트로 읽어 내보낸 파일이 백지가 된다.
       const format = url.searchParams.get("format") === "md" ? "md" : "html";
-      const dataJson = JSON.stringify(out).replace(/<\/script>/gi, "<\\/script>");
+      const dataJson = JSON.stringify(out).replace(/</g, "\\u003c");
       const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
       // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
       const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
@@ -781,6 +806,11 @@ const server = http.createServer(async (req, res) => {
       const dir = rawDir
         ? (rawDir.startsWith("~") ? join(homedir(), rawDir.slice(1)) : rawDir)
         : join(CW_DIR, "exports");
+      // 저장 위치는 홈·설정 폴더·임시 폴더 아래로 제한한다. 아무 절대경로나 받으면 이 라우트가
+      // "임의 위치에 파일 쓰기"가 된다.
+      const abs = resolve(dir);
+      if (![homedir(), CW_DIR, tmpdir()].some((root) => abs === resolve(root) || abs.startsWith(resolve(root) + sep)))
+        return send(res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "저장 위치는 홈 폴더 아래여야 합니다" }));
       await mkdir(dir, { recursive: true });
       const fpath = join(dir, fname);
       await writeFile(fpath, body, "utf8");
@@ -796,7 +826,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   send(res, 404, "text/plain", "not found");
-});
+}
 
 // macOS 네이티브 폴더 선택창. 취소하면 osascript가 1로 끝나므로 canceled 로 구분한다.
 function pickFolder(start) {
@@ -1134,6 +1164,12 @@ async function startArchiving() {
 }
 startArchiving().catch(() => {});
 
+// 포트가 이미 쓰이고 있을 때 스택트레이스 대신 무엇을 하면 되는지 알려준다.
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") console.error(`포트 ${PORT} 를 다른 프로그램이 쓰고 있어요. claude-watch 가 이미 떠 있다면 그대로 쓰시면 되고, 아니면 CW_PORT=4318 처럼 다른 포트를 지정해 주세요.`);
+  else console.error(e.message || e);
+  process.exit(1);
+});
 server.listen(PORT, HOST, () => {
   console.log(`claude-watch listening on http://localhost:${PORT}`);
   if (HOST !== "127.0.0.1" && HOST !== "localhost")

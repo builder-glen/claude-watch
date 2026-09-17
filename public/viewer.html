@@ -912,8 +912,37 @@ function modelChip(model) {
   const f = famOf(model);
   return `<span class="mchip m-${f}"><i></i><span>${esc(shortModel(model))}</span></span>`;
 }
+// 대화 본문은 신뢰할 수 없는 입력이다 — Claude 가 웹에서 읽어 온 글이 그대로 섞인다.
+// marked 는 본문 속 HTML 을 통과시키므로 <img onerror=…> 나 [링크](javascript:…) 가 살아남아,
+// 뷰어에서(그리고 내보낸 파일을 받은 사람의 컴퓨터에서) 실행됐다. 그리기 전에 걸러낸다.
+// <template> 안의 DOM 은 비활성이라 걸러내는 동안 스크립트가 돌거나 이미지가 요청되지 않는다.
+const MD_DROP = "script,iframe,object,embed,style,link,meta,base,form,button,textarea,select,svg,math,audio,video,source";
+const SAFE_URL = /^(https?:|mailto:|#|\/|\.)/i;
+function sanitizeHtml(html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  tpl.content.querySelectorAll(MD_DROP).forEach((el) => el.remove());
+  tpl.content.querySelectorAll("*").forEach((el) => {
+    for (const a of [...el.attributes]) {
+      const n = a.name.toLowerCase();
+      if (n.startsWith("on") || n === "style" || n === "srcdoc") el.removeAttribute(a.name);
+      else if ((n === "href" || n === "src" || n === "xlink:href" || n === "action" || n === "formaction")
+        && !SAFE_URL.test(a.value.trim()) && !(n === "src" && /^data:image\//i.test(a.value.trim()))) el.removeAttribute(a.name);
+    }
+    // 외부 이미지는 여는 것만으로 그 서버에 기록이 남는다(내보낸 파일은 외부에 아무것도 요청하지 않는다는 원칙).
+    if (el.tagName === "IMG" && /^https?:/i.test(el.getAttribute("src") || "")) {
+      const a = document.createElement("a");
+      a.href = el.getAttribute("src"); a.textContent = `🖼 ${el.getAttribute("alt") || "이미지"}`;
+      el.replaceWith(a);
+    }
+    // 체크리스트(- [ ])의 체크박스만 남긴다
+    if (el.tagName === "INPUT" && (el.getAttribute("type") !== "checkbox" || !el.hasAttribute("disabled"))) return el.remove();
+    if (el.tagName === "A" && !(el.getAttribute("href") || "").startsWith("#")) { el.setAttribute("rel", "noopener noreferrer"); el.setAttribute("target", "_blank"); }
+  });
+  return tpl.innerHTML;
+}
 function md(t) {
-  try { return window.marked ? marked.parse(String(t || ""), { breaks: true }) : esc(t); }
+  try { return window.marked ? sanitizeHtml(marked.parse(String(t || ""), { breaks: true })) : esc(t); }
   catch { return esc(t); }
 }
 function highlightCode() {
