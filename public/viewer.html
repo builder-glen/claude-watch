@@ -2497,10 +2497,12 @@ async function doExport() {
       msg.innerHTML = `<span style="color:var(--add)">저장됨</span> <span class="icode">${esc(homey(d.path))}</span>`
         + (size ? ` <span class="sd">${size}</span>` : "")
         + (lightInfo ? `<br>${esc(lightInfo)}` : "")
-        + (detail ? `<br>${esc(detail)}` : "");
+        + (detail ? `<br>${esc(detail)}` : "")
+        // 정규식 탐지는 완벽할 수 없다 — "가렸다"를 과신하지 않도록 매번 알린다.
+        + (m ? `<br><span class="sd">자동 탐지는 완벽하지 않아요. 공유 전에 한 번 훑어봐 주세요.</span>` : "");
       flash(`저장됨: ${d.file}`);
       go.textContent = "완료";
-      setTimeout(close, m && m.total ? 3200 : 1400);
+      setTimeout(close, m ? 6000 : 1400);
     } catch (e) {
       msg.innerHTML = `<span style="color:var(--del)">실패: ${esc(e.message)}</span>`;
       go.disabled = false; go.textContent = "내보내기";

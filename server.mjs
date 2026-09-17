@@ -20,7 +20,7 @@ import {
   extractSkills, toolStats, extractAgents, modelStats, fileChanges, turnCount, shortModel, modelFamily,
   completedAgentIds,
 } from "./lib/parse.mjs";
-import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
+import { maskPayload, maskText } from "./lib/sanitize.mjs";
 import { lightenEvents, lightenAgg, applyVisibility, DEFAULT_EXPORT_CONFIG, ELEMENTS, ALL_KEYS } from "./lib/lighten.mjs";
 import { toMarkdown } from "./lib/markdown.mjs";
 
@@ -754,17 +754,10 @@ async function handle(req, res) {
       let out = { ...payload, cache };
       let masked = { total: 0, counts: {} };
       if (doMask) {
-        const m = maskEvents(payload.events);
-        const counts = { ...m.counts };
-        out = {
-          ...payload,
-          events: m.events,
-          agg: maskAgg(payload.agg, counts),
-          cache: Object.fromEntries(Object.entries(cache).map(([k, v]) =>
-            [k, v && v.text ? { ...v, text: maskText(v.text, counts) } : v])),
-          masked: true,
-        };
-        masked = { total: Object.values(counts).reduce((s, n) => s + n, 0), counts };
+        // 골라서 가리지 않고 payload 전체를 돈다 — 의사결정·에이전트 설명·세션 경로로 새던 값을 막는다.
+        const m = maskPayload(out);
+        out = { ...m.value, masked: true };
+        masked = { total: m.total, counts: m.counts };
       }
 
       // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
@@ -784,7 +777,9 @@ async function handle(req, res) {
       const dataJson = JSON.stringify(out).replace(/</g, "\\u003c");
       const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
       // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
-      const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      // 제목·파일명도 가려진 사본에서 뽑는다(첫 질문에 비밀값이 있으면 파일명으로 새 나간다).
+      const titleRaw = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      const titleSrc = doMask ? maskText(titleRaw, {}) : titleRaw;
       const body = format === "md"
         ? toMarkdown(out, titleSrc.split("\n")[0].slice(0, 80))
         : await inlineVendor(
