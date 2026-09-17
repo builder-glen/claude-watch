@@ -150,6 +150,7 @@ async function sessionPayload(sess) {
       id: sess.id,
       project: sess.project,
       cwd: extractCwd(text),
+      archived: !!sess.archived,   // 보관본만 남은 세션 — 읽을 수는 있지만 이어갈 수 없다
       path: sess.path,
       firstTs: st.firstTs,
       lastTs: st.lastTs,
@@ -563,9 +564,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== "POST") return send(res, 200, "application/json", JSON.stringify({ app }));
     if (!app) return send(res, 200, "application/json", JSON.stringify({ error: "이 플랫폼에서는 터미널을 열 수 없습니다" }));
     const id = url.searchParams.get("id") || "";
-    const file = /^[\w-]+$/.test(id) ? await pathForSession(id) : null;
-    if (!file) return send(res, 404, "application/json", JSON.stringify({ error: "session not found" }));
-    const cwd = extractCwd(await readFile(file, "utf8"));
+    const sess = /^[\w-]+$/.test(id) ? (await findSessions()).find((x) => x.id === id) : null;
+    if (!sess) return send(res, 404, "application/json", JSON.stringify({ error: "session not found" }));
+    // 보관본만 남은 세션은 Claude Code 쪽 원본이 없어서 --resume 이 실패한다. 터미널을 띄우기 전에 알린다.
+    if (sess.archived) return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ error: "원본 로그가 삭제되어 이어갈 수 없는 세션입니다(보관본은 읽기 전용)" }));
+    const cwd = extractCwd(await readFile(sess.path, "utf8"));
     const cmd = (cwd ? `cd ${shq(cwd)} && ` : "") + `claude --resume ${id}`;
     return openInTerminal(app, cmd).then(
       () => send(res, 200, "application/json", JSON.stringify({ ok: true, app })),

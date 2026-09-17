@@ -1,61 +1,58 @@
-# 🦞 Claude-watch
+# 🦞 claude-watch
 
-## Claude Code 세션 로그(JSONL)를 사람이 읽기 좋은 실시간 HTML 문서로 보여주는 로컬 뷰어.
-### 세션을 실수로 닫거나, 지난 로컬 세션 기록을 찾아보는게 영 귀찮고 짜증나서 만든 기능, 지속 업데이트 중
-- 요약 / 구조 / 변경 / 대화 4개 탭으로 세션을 관리할 수 있음
-- 실시간 갱신(SSE) 새 활동만 증분 전송, 펼쳐둔 항목 유지
-- 서브에이전트·모델 전환·토큰/비용 표시
-- 자체완결 HTML로 내보내기(민감정보 마스킹 선택)
+## Claude Code 작업 세션을, 남에게 보여줄 수 있는 보고서로.
+
+터미널에서 흘러간 Claude Code 세션을 **읽고 · 되찾고 · 공유**하기 위한 로컬 도구입니다. 의존성 0, 내 컴퓨터 밖으로 아무것도 보내지 않습니다.
+
+| 불편 | claude-watch 가 하는 일 |
+|---|---|
+| **터미널은 읽기 어렵다** — 비개발자는 물론 개발자에게도 | 요약 / 구조 / 변경 / 대화 4개 탭의 문서로 보여줍니다. 한 줄 결론 · 의사결정 기록 · 구조도 · 파일별 diff · 토큰/비용. 실시간 갱신 |
+| **무심코 닫은 세션을 되찾을 수 없다** | 프로젝트별 세션 목록에서 찾아 **[이어하기]** — 명령어 복사 또는 iTerm2/Terminal 새 탭에서 바로 `claude --resume`. 30일 자동 삭제에 대비한 보관 |
+| **팀원에게 공유하거나 남겨둘 방법이 없다** | 서버 없이 열리는 **HTML 한 파일**(폰에서도 열림) 또는 **Markdown** 으로 내보내기. API 키 등 민감정보 자동 가림, 메신저로 보낼 크기의 경량 모드, 뺄 항목은 파일에서 실제로 삭제 |
 
 ## 요구 사항
 
 - Node.js 18+ (의존성 0 — Node 내장 모듈만 사용)
 - Claude Code (세션 로그를 `~/.claude/projects/` 에 남기는 주체)
-- macOS 권장 — `bin/cw`, `bin/statusline.sh`, 내보내기 폴더 선택창이 macOS 기준
+- macOS 권장 — 터미널에서 바로 이어하기 · 폴더 선택창은 macOS 전용(그 외에는 명령어 복사로 동작)
 
 ## 설치
 
 ```bash
-git clone https://github.com/builder-glen/claude-watch.git
-cd claude-watch
-node server.mjs            # http://localhost:4317
+npm i -g @builder-glen/claude-watch
+claude-watch            # 서버 실행 + 세션 목록 열기 (http://127.0.0.1:4317)
+claude-watch setup      # (선택) Claude Code 터미널 하단에 뷰어 링크 + 서버 자동 기동
 ```
 
-빌드 단계 없음. `npm install` 필요 없음.
+설치 없이 한 번만 써보려면 `npx @builder-glen/claude-watch`.
 
-### 터미널 하단 링크 + 자동 기동 (선택)
+`setup` 은 `~/.claude/settings.json` 의 `statusLine` 에 한 줄을 등록합니다. 기존 파일은
+`settings.json.claude-watch.bak` 으로 백업하고, 이미 다른 statusLine 이 있으면 `--force` 없이는
+덮어쓰지 않습니다. claude-hud 를 쓰고 있으면 그 출력을 그대로 유지한 채 링크 한 줄만 덧붙입니다.
 
-`~/.claude/settings.json` 에 statusLine을 등록하면, Claude Code를 쓸 때마다 터미널 하단에
-현재 세션 뷰어 링크가 뜨고 서버가 자동으로 뜹니다.
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash /절대경로/claude-watch/bin/statusline.sh"
-  }
-}
-```
-
-기존에 claude-hud를 쓰고 있으면 그 출력을 그대로 유지한 채 링크 한 줄만 덧붙입니다.
-
-### cw 명령 등록 (선택)
+<details><summary>소스에서 실행</summary>
 
 ```bash
-ln -s "$PWD/bin/cw" /usr/local/bin/cw
+git clone https://github.com/builder-glen/claude-watch.git
+cd claude-watch
+node server.mjs            # 빌드 단계 없음. npm install 필요 없음
 ```
+</details>
 
 ## 명령
 
+`claude-watch` 와 `cw` 는 같은 명령입니다.
+
 | 명령 | 하는 일 |
 |---|---|
-| `node server.mjs` | 서버 실행 (기본 포트 4317) |
-| `CW_PORT=5000 node server.mjs` | 포트 변경 |
+| `claude-watch` | 서버를 띄우고(이미 떠 있으면 그대로) 세션 목록 열기 |
 | `cw history` | 최근 세션 목록을 터미널에 출력 |
 | `cw open <n>` | n번 세션을 브라우저로 열기 |
-| `cw web` | 전체 세션 목록 페이지 열기 |
+| `cw resume <n>` | n번 세션을 터미널 새 탭에서 이어가기 (`--copy` 는 명령만 출력) |
 | `cw rename <n> "제목"` | 세션 제목 바꾸기 |
 | `cw project <n> "이름"` | 세션의 프로젝트 재지정 |
+| `cw setup` / `cw stop` | statusLine 등록 / 서버 종료 |
+| `CW_PORT=5000 claude-watch` | 포트 변경 |
 
 ## HTTP 엔드포인트
 
@@ -66,7 +63,8 @@ ln -s "$PWD/bin/cw" /usr/local/bin/cw
 | `GET /api/index` | 세션 색인(JSON) |
 | `GET /api/session/:id` | 이벤트 + 집계(JSON) |
 | `GET /events/:id` | SSE — `init` 1회 후 `patch`(변경분만) |
-| `GET /export/:id` | 자체완결 HTML 저장. `?dir=&name=&mask=1&light=1` |
+| `GET /export/:id` | 자체완결 HTML 저장. `?dir=&name=` · `&format=md` 는 Markdown |
+| `GET\|POST /api/resume-terminal` | 열 터미널 조회 / 세션 id 로 `claude --resume` 실행(macOS) |
 | `GET /api/ai/summary\|diagram/:id` | AI 요약·다이어그램 생성(`claude -p`, 별도 키 불필요) |
 | `GET /vendor/:file` | 뷰어가 쓰는 로컬 자산(마크다운·코드색·다이어그램·폰트) |
 | `POST /api/diagram-svg/:id` | 뷰어가 그린 다이어그램 SVG를 캐시에 저장(내보내기용) |
