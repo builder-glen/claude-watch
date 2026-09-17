@@ -1,0 +1,27 @@
+{
+  "name": "@builder-glen/claude-watch",
+  "version": "0.1.0",
+  "description": "Claude Code 세션을 읽기 좋은 보고서로 — 세션 뷰어 · 이어하기 · 민감정보를 가린 HTML/Markdown 내보내기. 의존성 0, 로컬 전용.",
+  "type": "module",
+  "bin": {
+    "claude-watch": "bin/cli.mjs",
+    "cw": "bin/cli.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "lib/",
+    "public/",
+    "bin/cli.mjs",
+    "bin/cw",
+    "bin/statusline.sh"
+  ],
+  "engines": { "node": ">=18" },
+  "os": ["darwin", "linux"],
+  "keywords": ["claude", "claude-code", "session", "transcript", "viewer", "export", "report"],
+  "repository": { "type": "git", "url": "git+https://github.com/builder-glen/claude-watch.git" },
+  "homepage": "https://github.com/builder-glen/claude-watch#readme",
+  "bugs": { "url": "https://github.com/builder-glen/claude-watch/issues" },
+  "license": "MIT",
+  "author": "builder-glen",
+  "publishConfig": { "access": "public" }
+}
