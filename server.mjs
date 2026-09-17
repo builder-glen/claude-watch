@@ -327,6 +327,9 @@ async function summaryHeadline(id) {
   return h.slice(0, 120);
 }
 
+// 카드 계산 방식이 바뀌면 올린다 — 파일이 안 바뀐 세션은 캐시를 재사용하므로, 안 올리면 옛 숫자가 남는다.
+//   2: 토큰·비용을 메시지 단위로 센다(줄 단위 합산은 약 2배로 부풀렸다)
+const INDEX_VERSION = 2;
 async function buildIndex() {
   const sessions = await findSessions();
   const cached = await readJson(INDEX_PATH, {});
@@ -335,7 +338,7 @@ async function buildIndex() {
   const out = {};
   for (const s of sessions) {
     const prev = cached[s.id];
-    if (prev && prev.updatedAt === s.mtime) {
+    if (prev && prev.updatedAt === s.mtime && prev.v === INDEX_VERSION) {
       out[s.id] = prev; // 안 바뀜 → 카드 재사용
       if (out[s.id].projectRaw == null) out[s.id].projectRaw = out[s.id].project; // 구버전 캐시 마이그레이션
       out[s.id].archived = !!s.archived;  // 보관 여부는 캐시가 아니라 매번 현재 상태를 쓴다
@@ -347,6 +350,7 @@ async function buildIndex() {
         const u = summarizeUsage(text);
         const ms = modelStats(events);
         out[s.id] = {
+          v: INDEX_VERSION,
           id: s.id, projectRaw: extractProject(text, s.project), updatedAt: s.mtime,
           archived: !!s.archived,   // 원본이 지워져 보관본으로만 남은 세션
           cwd: extractCwd(text),
