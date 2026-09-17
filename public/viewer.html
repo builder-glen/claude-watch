@@ -417,11 +417,34 @@ body.pv-sum-agents .agentcard,body.pv-sum-models .legend,body.pv-sum-files .file
   border:1px solid var(--line-soft);font-size:calc(12.5px * var(--fs) * var(--fs-sum-label,1));color:var(--ink-2)}
 .rmeta .mi b{font-weight:600;color:var(--muted);font-size:.92em}
 .outcome{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:10px;background:var(--block);border:1px solid var(--line-soft)}
-.outcome .st{flex-shrink:0;font-size:calc(11.5px * var(--fs) * var(--fs-sum-label,1));font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
-.outcome .st.done{color:var(--done);background:rgba(95,207,134,.12)}
-.outcome .st.partial{color:var(--sess);background:rgba(244,248,157,.10)}
-.outcome .st.blocked{color:var(--del);background:rgba(239,125,125,.12)}
+.outcome .st,.outcome-st{flex-shrink:0;font-size:calc(11.5px * var(--fs) * var(--fs-sum-label,1));font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.st.done{color:var(--done);background:rgba(95,207,134,.12)}
+.st.partial{color:var(--sess);background:rgba(244,248,157,.10)}
+.st.blocked{color:var(--del);background:rgba(239,125,125,.12)}
 .outcome .tx{font-size:calc(14px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink)}
+/* 목표 → 결과 / 해결한 내용 | 남은 과제 — 보고서를 받은 사람이 가장 먼저 찾는 세 가지를 카드로 */
+.goalcard{display:flex;flex-direction:column;gap:12px;padding:16px 18px;border-radius:12px;background:var(--block);border:1px solid var(--line)}
+.gc-row{display:flex;gap:12px;align-items:flex-start}
+.gc-ico{flex-shrink:0;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.gc-ico.goal{color:var(--accent);background:var(--accent-bg)}
+.gc-lab{font-size:calc(11px * var(--fs) * var(--fs-sum-label,1));font-weight:700;letter-spacing:.08em;color:var(--muted);margin-bottom:3px}
+.gc-tx{font-size:calc(15.5px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink);font-weight:600;text-wrap:pretty}
+.gc-res{display:flex;gap:10px;align-items:flex-start;padding-top:12px;border-top:1px dashed var(--line)}
+.gc-res .tx{font-size:calc(14px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink-2)}
+.dn-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:820px){.dn-grid{grid-template-columns:1fr}}
+.dn-col{display:flex;flex-direction:column;gap:12px;padding:16px 18px;border-radius:12px;background:var(--block);border:1px solid var(--line)}
+.dn-col.done{border-top:2px solid var(--done)}
+.dn-col.todo{border-top:2px solid var(--sess)}
+.dn-head{display:flex;align-items:center;gap:8px;font-size:calc(13px * var(--fs) * var(--fs-sum-label,1));font-weight:700;color:var(--ink)}
+.dn-head .n{margin-left:auto;font-family:var(--mono);font-size:.9em;font-weight:600;padding:1px 8px;border-radius:999px}
+.dn-col.done .dn-head .n{color:var(--done);background:rgba(95,207,134,.12)}
+.dn-col.todo .dn-head .n{color:var(--sess);background:rgba(244,248,157,.10)}
+.dn-item{display:flex;gap:10px;align-items:flex-start;font-size:calc(14px * var(--fs) * var(--fs-sum-bullet,1));line-height:1.65;color:var(--ink-2)}
+.dn-item svg{flex-shrink:0;margin-top:4px}
+.dn-col.done .dn-item svg{color:var(--done)}
+.dn-col.todo .dn-item svg{color:var(--sess)}
+.dn-empty{font-size:calc(13px * var(--fs) * var(--fs-sum-body,1));color:var(--muted);line-height:1.6}
 .nextbox{display:flex;flex-direction:column;gap:7px}
 .nextbox .nx{display:flex;gap:9px;align-items:flex-start;font-size:calc(13.5px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink-2)}
 .nextbox .nx i{flex-shrink:0;width:13px;height:13px;margin-top:5px;border-radius:4px;border:1.5px solid var(--muted)}
@@ -1349,16 +1372,37 @@ function reportMeta() {
   return items.length ? `<div class="rmeta">${items.map(([k, v]) => `<span class="mi"><b>${k}</b>${v}</span>`).join("")}</div>` : "";
 }
 const STATUS_LABEL = { done: "완료", partial: "일부 완료", blocked: "중단" };
-function outcomeBlock(o) {
-  if (!o || !o.outcome) return "";
-  const st = STATUS_LABEL[o.status] ? o.status : "partial";
-  return `<div class="outcome"><span class="st ${st}">${STATUS_LABEL[st]}</span><span class="tx">${inlineCode(o.outcome)}</span></div>`;
+const ICO_GOAL = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.6" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r=".7" fill="currentColor"/></svg>`;
+const ICO_DONE = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="currentColor" opacity=".16"/><path d="M5 8.3l2 2 4-4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICO_TODO = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.9" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.6 2.2"/></svg>`;
+
+// 목표 → 결과. 목표는 AI 의 goal, 없으면(예전 요약·AI 없음) 사용자의 첫 요청을 그대로 쓴다.
+function firstAsk() {
+  const u = EVENTS.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("["));
+  if (!u) return "";
+  // 첫 줄만 — 첫 요청에는 붙여넣은 명령·오류 로그가 뒤따르는 경우가 많다
+  const t = u.text.trim().split(/\r?\n/)[0].replace(/\s+/g, " ");
+  return t.length > 110 ? t.slice(0, 110) + "…" : t;
 }
-function nextBlock(o) {
-  const list = (o && Array.isArray(o.next) ? o.next : []).filter(Boolean).slice(0, 3);
-  if (!list.length) return "";
-  return `<div class="pane" style="gap:10px"><div class="sechead"><div class="seclab">남은 일</div></div>
-    <div class="nextbox">${list.map((x) => `<div class="nx"><i></i><span>${inlineCode(x)}</span></div>`).join("")}</div></div>`;
+function goalCard(o) {
+  const goal = (o && o.goal) || firstAsk();
+  if (!goal && !(o && o.outcome)) return "";
+  const st = o && STATUS_LABEL[o.status] ? o.status : "partial";
+  return `<div class="goalcard">
+    ${goal ? `<div class="gc-row"><span class="gc-ico goal">${ICO_GOAL}</span>
+      <div><div class="gc-lab">목표${o && o.goal ? "" : " · 첫 요청"}</div><div class="gc-tx">${inlineCode(goal)}</div></div></div>` : ""}
+    ${o && o.outcome ? `<div class="gc-res"><span class="outcome-st st ${st}">${STATUS_LABEL[st]}</span><span class="tx">${inlineCode(o.outcome)}</span></div>` : ""}
+  </div>`;
+}
+// 해결한 내용 | 남은 과제. hasNext=false 는 예전 형식의 요약(남은 과제를 모른다)이라는 뜻.
+function doneNext(done, next, hasNext) {
+  const col = (cls, ico, title, list, empty) => `<div class="dn-col ${cls}">
+    <div class="dn-head">${title}<span class="n">${list.length}</span></div>
+    ${list.length ? list.map((x) => `<div class="dn-item">${ico}<span>${inlineCode(x)}</span></div>`).join("") : `<div class="dn-empty">${empty}</div>`}</div>`;
+  return `<div class="dn-grid">
+    ${col("done", ICO_DONE, "해결한 내용", done, "아직 끝낸 것이 없어요")}
+    ${col("todo", ICO_TODO, "남은 과제", next, hasNext ? "남은 과제가 없어요 — 요청한 일이 모두 끝났습니다" : "예전 형식의 요약이라 알 수 없어요. 다시 생성하면 채워집니다")}
+  </div>`;
 }
 
 // 대화 탭의 #m<번호> 로 이동. 주소창 해시도 같이 바꿔 뒤로가기로 돌아올 수 있게 한다.
@@ -1417,10 +1461,9 @@ async function renderAiSummary() {
     if (o && o.headline) {
       box.innerHTML = `<div class="pane" style="gap:22px">
         <div class="pane" style="gap:12px"><div class="headline">${esc(o.headline)}</div>${reportMeta()}</div>
-        ${outcomeBlock(o)}
-        <div class="bullets">${(o.bullets || []).slice(0, 3).map(b =>
-          `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
-        ${narrativeBlock(o.narrative)}${nextBlock(o)}${foot || old}</div>`;
+        ${goalCard(o)}
+        ${doneNext((o.bullets || []).filter(Boolean).slice(0, 4), (Array.isArray(o.next) ? o.next : []).filter(Boolean).slice(0, 3), Array.isArray(o.next))}
+        ${narrativeBlock(o.narrative)}${foot || old}</div>`;
     } else {
       box.innerHTML = `<div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>
         <div class="abody">${md(String(data.text || ""))}</div>${foot}</div>`;
@@ -1432,6 +1475,7 @@ async function renderAiSummary() {
   // 토큰 0 자동 요약 — AI 결과가 없거나 만드는 중일 때 보여준다
   const autoPane = (tail) => `<div class="pane" style="gap:14px">
       <div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>${reportMeta()}</div>
+      ${goalCard(null)}
       <div class="bullets">${autoBullets().map(b => `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
       ${tail}</div>`;
 
