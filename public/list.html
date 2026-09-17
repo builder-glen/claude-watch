@@ -157,7 +157,7 @@ function rowHtml(x) {
     <div class="ract">
       <button data-act="open">열기</button>
       <button data-act="resume" class="resume" ${x.archived ? "disabled title=\"원본이 삭제되어 이어갈 수 없어요\"" : ""}>이어하기</button>
-      <button data-act="export">📦</button>
+      <button data-act="export">내보내기</button>
     </div>
   </div>`;
 }
@@ -167,11 +167,8 @@ function bindRows() {
     const id = row.dataset.id;
     row.querySelector('[data-act="open"]').onclick = () => { window.location.href = `/s/${id}`; };
     row.querySelector('[data-act="resume"]').onclick = () => openResume(DATA.find(x => x.id === id));
-    row.querySelector('[data-act="export"]').onclick = async (e) => {
-      const b = e.target; b.disabled = true; b.textContent = "…";
-      try { const r = await fetch(`/export/${id}`); const d = await r.json(); flash(d.ok ? `내보냄: ${d.path}` : "실패: " + d.error); }
-      catch (err) { flash("실패: " + err.message); } finally { b.disabled = false; b.textContent = "📦"; }
-    };
+    // 예전엔 아이콘(📦)만 있는 버튼이 확인 없이 기본 폴더에 바로 저장했다. 뷰어의 내보내기 창으로 보낸다.
+    row.querySelector('[data-act="export"]').onclick = () => { window.location.href = `/s/${id}?export=1`; };
     const t = row.querySelector(".rtitle");
     t.onclick = async () => {
       const cur = t.dataset.title;

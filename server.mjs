@@ -769,6 +769,11 @@ async function handle(req, res) {
       // 설정에서 끈 항목은 화면에서 가리는 게 아니라 데이터에서 뺀다(소스 보기로도 안 보이도록).
       out = applyVisibility(out, show, lt.counts);
       out.show = show;
+      // 받는 사람이 보는 제목 — 색인의 해석된 제목(별칭 > 요약 한 줄 > AI 제목 > 첫 질문).
+      // 내보낸 파일에는 색인이 없어서, 이걸 안 실으면 첫 질문 원문("…수정하려고 해,")이 보고서 제목이 됐다.
+      const idxTitle = ((await buildIndex())[id] || {}).title || "";
+      out.session = { ...out.session, title: doMask ? maskText(idxTitle, {}) : idxTitle };
+      out.exportedAt = new Date().toISOString();
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // "<" 를 전부 \u003c 로 바꾼다. </script> 만 막아서는 부족했다 — 데이터에 "<!--<script" 가 있고
@@ -783,7 +788,10 @@ async function handle(req, res) {
       const body = format === "md"
         ? toMarkdown(out, titleSrc.split("\n")[0].slice(0, 80))
         : await inlineVendor(
-          VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>")
+          VIEWER.replace("__SESSION_ID__", () => id)
+            // 메신저·파일 미리보기에 뜨는 이름. 고정 문구면 모든 파일이 같은 이름으로 보인다.
+            .replace(/<title>[^<]*<\/title>/, () => `<title>${escHtml(out.session.title || "세션")} · claude-watch</title>`)
+            .replace("</head>", () => inject + "\n</head>")
         );
 
       // 저장 위치·파일명: 사용자가 지정할 수 있고, 비우면 기본값을 쓴다.
@@ -890,6 +898,8 @@ function openInTerminal(app, cmd) {
     });
   });
 }
+
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function send(res, code, type, body) {
   res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-cache" });
