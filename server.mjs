@@ -461,6 +461,10 @@ async function freshHtml() {
 // 같은 식으로 부를 수 있으므로, 부수효과가 있는 경로는 교차 출처를 거부한다.
 function sameOriginOnly(req) {
   const site = req.headers["sec-fetch-site"];
+  // 출처를 알려주는 헤더가 하나도 없으면 거절한다. 예전엔 통과시켜서, Sec-Fetch-Site 를 안 보내는
+  // 구형 브라우저에서는 <img src="…/api/rename/…"> 하나로 부수효과 라우트가 호출됐다(전부 GET 이다).
+  // 요즘 브라우저는 항상 보내고, CLI 는 직접 붙인다.
+  if (!site && !req.headers.origin) return false;
   if (site && site !== "same-origin" && site !== "none") return false;
   const origin = req.headers.origin;
   if (origin) {
@@ -501,7 +505,9 @@ async function handle(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
-  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config" || path === "/api/archive" || path === "/api/resume-terminal") && !sameOriginOnly(req))
+  // 같은 경로가 GET 은 조회, POST 는 실행인 것들은 실행일 때만 가드한다(조회까지 막으면 CLI·테스트의 읽기가 깨진다).
+  const READ_OR_WRITE = path === "/api/export-config" || path === "/api/archive" || path === "/api/resume-terminal";
+  if ((MUTATING.test(path) || path === "/api/pick-folder" || (READ_OR_WRITE && req.method !== "GET")) && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // HTML 을 쓰는 경로에서만 파일이 바뀌었는지 확인한다(CW_DEV 없이 떠 있어도 최신이 나간다).
