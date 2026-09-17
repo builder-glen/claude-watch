@@ -22,6 +22,7 @@ import {
 } from "./lib/parse.mjs";
 import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
 import { lightenEvents, lightenAgg, applyVisibility, DEFAULT_EXPORT_CONFIG, ELEMENTS, ALL_KEYS } from "./lib/lighten.mjs";
+import { toMarkdown } from "./lib/markdown.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.CW_PORT || 4317);
@@ -668,6 +669,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // export: 자체완결 HTML(데이터 인라인, SSE 없음) 생성 → ~/.claude-watch/exports/ 저장
+  //   ?format=md 이면 같은 사본을 Markdown 으로(기본은 html)
   //   ?refresh=1 이면 stale/없는 AI를 그 자리에서 재생성(최신화)
   const mExport = path.match(/^\/export\/([\w-]+)$/);
   if (mExport) {
@@ -732,23 +734,27 @@ const server = http.createServer(async (req, res) => {
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
       // </script> 만 닫힘 방지로 이스케이프.
+      const format = url.searchParams.get("format") === "md" ? "md" : "html";
       const dataJson = JSON.stringify(out).replace(/<\/script>/gi, "<\\/script>");
       const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
       // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
-      const html = await inlineVendor(
-        VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>")
-      );
+      const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      const body = format === "md"
+        ? toMarkdown(out, titleSrc.split("\n")[0].slice(0, 80))
+        : await inlineVendor(
+          VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>")
+        );
 
       // 저장 위치·파일명: 사용자가 지정할 수 있고, 비우면 기본값을 쓴다.
       const clean = (s) => String(s).replace(/[\/\\:*?"<>|\n\r]+/g, " ").trim();
-      const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
       const d = new Date();
       const ymd = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
       const proj = clean((sess.project || "").split("/").pop() || "session");
       const defName = `[${ymd}] ${proj} · ${clean(titleSrc.split("\n")[0]).slice(0, 40)}`;
 
       let fname = clean(url.searchParams.get("name") || "") || defName;
-      if (!/\.html?$/i.test(fname)) fname += ".html";
+      // 사용자가 다른 형식의 확장자를 적어 넣어도 실제 형식에 맞춘다(foo.md 로 적고 HTML 을 고른 경우 등)
+      fname = fname.replace(/\.(html?|md|markdown)$/i, "") + (format === "md" ? ".md" : ".html");
 
       const rawDir = (url.searchParams.get("dir") || "").trim();
       const dir = rawDir
@@ -756,12 +762,12 @@ const server = http.createServer(async (req, res) => {
         : join(CW_DIR, "exports");
       await mkdir(dir, { recursive: true });
       const fpath = join(dir, fname);
-      await writeFile(fpath, html, "utf8");
+      await writeFile(fpath, body, "utf8");
       return send(res, 200, "application/json; charset=utf-8", JSON.stringify({
-        ok: true, file: fname, dir, path: fpath,
+        ok: true, file: fname, dir, path: fpath, format,
         hasAI: { summary: !!cache.summary, diagram: !!cache.diagram },
         masked: doMask ? masked : null,
-        light: { mode, ...lt.counts, bytes: Buffer.byteLength(html) },
+        light: { mode, ...lt.counts, bytes: Buffer.byteLength(body) },
       }));
     } catch (e) {
       return send(res, 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));

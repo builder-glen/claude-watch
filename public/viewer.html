@@ -2219,7 +2219,12 @@ async function doExport() {
   dlg.className = "modal";
   dlg.innerHTML = `<div class="sheet">
       <div class="sh">세션 내보내기</div>
-      <div class="sd">서버 없이 열리는 자체완결 HTML 파일 하나로 저장합니다.</div>
+      <div class="sd" id="exDesc">서버 없이 열리는 자체완결 HTML 파일 하나로 저장합니다.</div>
+      <label class="fl">형식</label>
+      <div class="frow" role="radiogroup">
+        <label class="ckl"><input type="radio" name="exFmt" value="html" checked /><span>HTML <span class="sd">(기본 · 뷰어 그대로)</span></span></label>
+        <label class="ckl"><input type="radio" name="exFmt" value="md" /><span>Markdown <span class="sd">(위키·PR 에 붙여넣기)</span></span></label>
+      </div>
       <label class="fl">저장 위치</label>
       <div class="frow">
         <input class="fi mono" id="exDir" value="${esc(homey(exportDefaults.dir))}" spellcheck="false" />
@@ -2263,6 +2268,13 @@ async function doExport() {
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
   });
   $("exName").focus(); $("exName").select();
+  // 형식에 따라 안내 문구만 바꾼다. 확장자는 서버가 형식에 맞춰 붙인다.
+  const fmt = () => (dlg.querySelector('input[name="exFmt"]:checked') || {}).value || "html";
+  dlg.querySelectorAll('input[name="exFmt"]').forEach((r) => r.onchange = () => {
+    $("exDesc").textContent = fmt() === "md"
+      ? "대화·요약·의사결정·변경 파일을 Markdown 파일 하나로 저장합니다. 도구 호출은 접힌 블록으로 들어갑니다."
+      : "서버 없이 열리는 자체완결 HTML 파일 하나로 저장합니다.";
+  });
 
   $("exGo").onclick = async () => {
     const go = $("exGo"), msg = $("exMsg");
@@ -2271,6 +2283,7 @@ async function doExport() {
       const q = new URLSearchParams({
         dir: $("exDir").value.trim(),
         name: $("exName").value.trim(),
+        format: fmt(),
       });
       // 설정은 서버가 export-config.json 에서 읽는다 — 여기서 다시 보내지 않는다.
       const r = await fetch(`/export/${SESSION}?${q}`);
