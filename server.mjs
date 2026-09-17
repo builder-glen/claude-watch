@@ -9,7 +9,7 @@
 
 import http from "node:http";
 import { readFile, readdir, stat, mkdir, writeFile, rm, unlink } from "node:fs/promises";
-import { watch, existsSync } from "node:fs";
+import { watch, existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, basename, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -25,6 +25,7 @@ import { lightenEvents, lightenAgg, applyVisibility, DEFAULT_EXPORT_CONFIG, ELEM
 import { toMarkdown } from "./lib/markdown.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = (() => { try { return JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")).version; } catch { return "dev"; } })();
 const PORT = Number(process.env.CW_PORT || 4317);
 // 이 서버는 세션 전문(코드·파일 내용·명령 출력·자격증명)을 그대로 내보낸다.
 // 인증이 없으므로 기본은 루프백 전용. 같은 와이파이의 다른 기기에서 접근하지 못한다.
@@ -507,6 +508,9 @@ async function handle(req, res) {
   if (path === "/" || path.startsWith("/s/") || path.startsWith("/export/")) await freshHtml();
 
   if (path === "/health") return send(res, 200, "text/plain", "ok");
+  // CLI 가 "떠 있는 서버가 지금 설치된 버전인가"를 확인한다. 서버는 분리 기동돼 오래 살아서,
+  // npm 으로 업데이트해도 옛 코드가 계속 돌았다(2026-09-17 에 실제로 겪었다).
+  if (path === "/api/version") return send(res, 200, "application/json", JSON.stringify({ version: VERSION }));
 
   // 내보내기 기본 저장 경로(뷰어 다이얼로그 기본값)
   if (path === "/api/export-defaults") {
@@ -597,6 +601,8 @@ async function handle(req, res) {
     // 보관본만 남은 세션은 Claude Code 쪽 원본이 없어서 --resume 이 실패한다. 터미널을 띄우기 전에 알린다.
     if (sess.archived) return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ error: "원본 로그가 삭제되어 이어갈 수 없는 세션입니다(보관본은 읽기 전용)" }));
     const cwd = extractCwd(await readFile(sess.path, "utf8"));
+    // 폴더가 지워졌거나 옮겨졌으면 새 탭에 "cd: no such file" 만 뜨는데, 예전엔 "열었어요" 라고 답했다.
+    if (cwd && !existsSync(cwd)) return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ error: `세션이 돌던 폴더가 지금은 없어요: ${cwd}` }));
     const cmd = (cwd ? `cd ${shq(cwd)} && ` : "") + `claude --resume ${id}`;
     return openInTerminal(app, cmd).then(
       () => send(res, 200, "application/json", JSON.stringify({ ok: true, app })),
@@ -1083,7 +1089,11 @@ async function runClaude(kind, digest) {
     const killer = setTimeout(() => child.kill("SIGKILL"), 120000);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    child.on("error", (e) => { clearTimeout(killer); reject(e); });
+    child.on("error", (e) => {
+      clearTimeout(killer);
+      // "spawn claude ENOENT" 는 읽는 사람에게 아무 뜻이 없다.
+      reject(e.code === "ENOENT" ? new Error("Claude Code(claude 명령)를 찾지 못했어요. AI 요약은 설치된 Claude Code 로 만들어집니다 — 터미널에서 claude 가 실행되는지 확인해 주세요.") : e);
+    });
     child.on("close", (code) => {
       clearTimeout(killer);
       if (code !== 0) return reject(new Error(err.trim() || `claude exited ${code}`));
