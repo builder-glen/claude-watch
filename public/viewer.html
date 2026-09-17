@@ -1024,9 +1024,12 @@ function copyResume() {
 // 복사만 하던 버튼에 "터미널에서 바로 열기"를 더한다. 브라우저 confirm() 은 버튼 문구를
 // 바꿀 수 없어서 자체 팝업을 쓴다. 터미널 실행은 브라우저가 못 하므로 로컬 서버가 맡는다.
 async function openResume() {
+  // 보관본만 남은 세션은 Claude Code 쪽 원본이 없어 --resume 이 실패한다.
+  if (SESS && SESS.archived) return flash("원본 로그가 삭제된 보관본이라 이어갈 수 없어요. 읽기·내보내기만 가능합니다.");
   document.getElementById("resumedlg")?.remove();
-  let app = null;
-  try { app = (await (await fetch("/api/resume-terminal")).json()).app; } catch {}
+  // stale: 서버가 이 기능 이전 버전으로 떠 있는 경우(404). 버튼을 조용히 숨기지 않고 이유를 알린다.
+  let app = null, stale = false;
+  try { const r = await fetch("/api/resume-terminal"); if (r.ok) app = (await r.json()).app; else stale = true; } catch {}
   const dlg = document.createElement("div");
   dlg.id = "resumedlg";
   dlg.className = "modal";
@@ -1042,7 +1045,7 @@ async function openResume() {
       <button class="btn-sec" id="resumeCopy">명령어 복사</button>
       ${app ? `<button class="btn-primary" id="resumeRun">${esc(app)}에서 열기</button>` : ""}
     </div>
-    <div class="sd" id="resumeMsg"></div>
+    <div class="sd" id="resumeMsg">${stale ? "터미널에서 바로 열기는 claude-watch 서버를 재시작하면 쓸 수 있어요." : ""}</div>
   </div>`;
   document.body.appendChild(dlg);
   const onKey = (e) => { if (e.key === "Escape") close(); };
