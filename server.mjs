@@ -9,10 +9,10 @@
 
 import http from "node:http";
 import { readFile, readdir, stat, mkdir, writeFile, rm, unlink } from "node:fs/promises";
-import { watch, existsSync } from "node:fs";
+import { watch, existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { join, basename } from "node:path";
-import { homedir } from "node:os";
+import { join, basename, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import {
@@ -20,11 +20,12 @@ import {
   extractSkills, toolStats, extractAgents, modelStats, fileChanges, turnCount, shortModel, modelFamily,
   completedAgentIds,
 } from "./lib/parse.mjs";
-import { maskEvents, maskAgg, maskText } from "./lib/sanitize.mjs";
+import { maskPayload, maskText } from "./lib/sanitize.mjs";
 import { lightenEvents, lightenAgg, applyVisibility, DEFAULT_EXPORT_CONFIG, ELEMENTS, ALL_KEYS } from "./lib/lighten.mjs";
 import { toMarkdown } from "./lib/markdown.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = (() => { try { return JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")).version; } catch { return "dev"; } })();
 const PORT = Number(process.env.CW_PORT || 4317);
 // 이 서버는 세션 전문(코드·파일 내용·명령 출력·자격증명)을 그대로 내보낸다.
 // 인증이 없으므로 기본은 루프백 전용. 같은 와이파이의 다른 기기에서 접근하지 못한다.
@@ -327,6 +328,10 @@ async function summaryHeadline(id) {
   return h.slice(0, 120);
 }
 
+// 카드 계산 방식이 바뀌면 올린다 — 파일이 안 바뀐 세션은 캐시를 재사용하므로, 안 올리면 옛 숫자가 남는다.
+//   2: 토큰·비용을 메시지 단위로 센다(줄 단위 합산은 약 2배로 부풀렸다)
+//   3: 의사결정 답변의 두 번째 형식(일부만 답하고 되물은 경우)을 읽는다
+const INDEX_VERSION = 3;
 async function buildIndex() {
   const sessions = await findSessions();
   const cached = await readJson(INDEX_PATH, {});
@@ -335,7 +340,7 @@ async function buildIndex() {
   const out = {};
   for (const s of sessions) {
     const prev = cached[s.id];
-    if (prev && prev.updatedAt === s.mtime) {
+    if (prev && prev.updatedAt === s.mtime && prev.v === INDEX_VERSION) {
       out[s.id] = prev; // 안 바뀜 → 카드 재사용
       if (out[s.id].projectRaw == null) out[s.id].projectRaw = out[s.id].project; // 구버전 캐시 마이그레이션
       out[s.id].archived = !!s.archived;  // 보관 여부는 캐시가 아니라 매번 현재 상태를 쓴다
@@ -347,6 +352,7 @@ async function buildIndex() {
         const u = summarizeUsage(text);
         const ms = modelStats(events);
         out[s.id] = {
+          v: INDEX_VERSION,
           id: s.id, projectRaw: extractProject(text, s.project), updatedAt: s.mtime,
           archived: !!s.archived,   // 원본이 지워져 보관본으로만 남은 세션
           cwd: extractCwd(text),
@@ -456,6 +462,10 @@ async function freshHtml() {
 // 같은 식으로 부를 수 있으므로, 부수효과가 있는 경로는 교차 출처를 거부한다.
 function sameOriginOnly(req) {
   const site = req.headers["sec-fetch-site"];
+  // 출처를 알려주는 헤더가 하나도 없으면 거절한다. 예전엔 통과시켜서, Sec-Fetch-Site 를 안 보내는
+  // 구형 브라우저에서는 <img src="…/api/rename/…"> 하나로 부수효과 라우트가 호출됐다(전부 GET 이다).
+  // 요즘 브라우저는 항상 보내고, CLI 는 직접 붙인다.
+  if (!site && !req.headers.origin) return false;
   if (site && site !== "same-origin" && site !== "none") return false;
   const origin = req.headers.origin;
   if (origin) {
@@ -468,17 +478,46 @@ function sameOriginOnly(req) {
 }
 const MUTATING = /^\/(export|api\/(rename|setproject|ai|pick-folder|diagram-svg))\//;
 
-const server = http.createServer(async (req, res) => {
+// 이 서버는 인증이 없다. "내 브라우저가 내 주소로 보낸 요청"만 받는 것이 유일한 방어선이다.
+// 악성 사이트가 자기 도메인을 127.0.0.1 로 가리키게 만들면(DNS 리바인딩) 브라우저는 같은 출처라고
+// 믿고 세션 전문을 읽어 간다. 그 요청은 Host 헤더가 그 도메인이므로 여기서 걸러진다.
+// CW_HOST 로 일부러 연 경우에는 어떤 이름으로 접속할지 알 수 없어 검사하지 않는다.
+const LOOPBACK_ONLY = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+function hostAllowed(req) {
+  if (!LOOPBACK_ONLY) return true;
+  const h = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+  return h === "127.0.0.1" || h === "localhost" || h === "[::1]";
+}
+
+// 요청 하나의 예외가 프로세스를 죽이면 안 된다. `GET //` 한 줄로 new URL 이 던져 서버가 꺼졌었다 —
+// 아무 웹페이지나 <img src="http://localhost:4317//"> 로 뷰어를 끌 수 있었다는 뜻이다.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    try {
+      if (!res.headersSent) send(res, e instanceof TypeError && /URL/i.test(e.message) ? 400 : 500, "application/json", JSON.stringify({ error: String(e?.message || e) }));
+      else res.end();
+    } catch {}
+  });
+});
+process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e?.message || e));
+
+async function handle(req, res) {
+  if (!hostAllowed(req)) return send(res, 403, "application/json", JSON.stringify({ error: "허용되지 않은 Host" }));
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
 
-  if ((MUTATING.test(path) || path === "/api/pick-folder" || path === "/api/export-config" || path === "/api/archive" || path === "/api/resume-terminal") && !sameOriginOnly(req))
+  // 같은 경로가 GET 은 조회, POST 는 실행인 것들은 실행일 때만 가드한다(조회까지 막으면 CLI·테스트의 읽기가 깨진다).
+  const READ_OR_WRITE = path === "/api/export-config" || path === "/api/archive" || path === "/api/resume-terminal";
+  if ((MUTATING.test(path) || path === "/api/pick-folder" || (READ_OR_WRITE && req.method !== "GET")) && !sameOriginOnly(req))
     return send(res, 403, "application/json", JSON.stringify({ error: "교차 출처 요청은 허용되지 않습니다" }));
 
   // HTML 을 쓰는 경로에서만 파일이 바뀌었는지 확인한다(CW_DEV 없이 떠 있어도 최신이 나간다).
   if (path === "/" || path.startsWith("/s/") || path.startsWith("/export/")) await freshHtml();
 
   if (path === "/health") return send(res, 200, "text/plain", "ok");
+  // CLI 가 "떠 있는 서버가 지금 설치된 버전인가"를 확인한다. 서버는 분리 기동돼 오래 살아서,
+  // npm 으로 업데이트해도 옛 코드가 계속 돌았다(2026-09-17 에 실제로 겪었다).
+  if (path === "/api/version") return send(res, 200, "application/json", JSON.stringify({ version: VERSION }));
 
   // 내보내기 기본 저장 경로(뷰어 다이얼로그 기본값)
   if (path === "/api/export-defaults") {
@@ -569,6 +608,8 @@ const server = http.createServer(async (req, res) => {
     // 보관본만 남은 세션은 Claude Code 쪽 원본이 없어서 --resume 이 실패한다. 터미널을 띄우기 전에 알린다.
     if (sess.archived) return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ error: "원본 로그가 삭제되어 이어갈 수 없는 세션입니다(보관본은 읽기 전용)" }));
     const cwd = extractCwd(await readFile(sess.path, "utf8"));
+    // 폴더가 지워졌거나 옮겨졌으면 새 탭에 "cd: no such file" 만 뜨는데, 예전엔 "열었어요" 라고 답했다.
+    if (cwd && !existsSync(cwd)) return send(res, 200, "application/json; charset=utf-8", JSON.stringify({ error: `세션이 돌던 폴더가 지금은 없어요: ${cwd}` }));
     const cmd = (cwd ? `cd ${shq(cwd)} && ` : "") + `claude --resume ${id}`;
     return openInTerminal(app, cmd).then(
       () => send(res, 200, "application/json", JSON.stringify({ ok: true, app })),
@@ -730,17 +771,10 @@ const server = http.createServer(async (req, res) => {
       let out = { ...payload, cache };
       let masked = { total: 0, counts: {} };
       if (doMask) {
-        const m = maskEvents(payload.events);
-        const counts = { ...m.counts };
-        out = {
-          ...payload,
-          events: m.events,
-          agg: maskAgg(payload.agg, counts),
-          cache: Object.fromEntries(Object.entries(cache).map(([k, v]) =>
-            [k, v && v.text ? { ...v, text: maskText(v.text, counts) } : v])),
-          masked: true,
-        };
-        masked = { total: Object.values(counts).reduce((s, n) => s + n, 0), counts };
+        // 골라서 가리지 않고 payload 전체를 돈다 — 의사결정·에이전트 설명·세션 경로로 새던 값을 막는다.
+        const m = maskPayload(out);
+        out = { ...m.value, masked: true };
+        masked = { total: m.total, counts: m.counts };
       }
 
       // 경량화 — 마스킹 뒤에 돌린다. 순서가 바뀌면 잘려나간 뒷부분의 자격증명이 마스킹을 건너뛴다.
@@ -752,18 +786,29 @@ const server = http.createServer(async (req, res) => {
       // 설정에서 끈 항목은 화면에서 가리는 게 아니라 데이터에서 뺀다(소스 보기로도 안 보이도록).
       out = applyVisibility(out, show, lt.counts);
       out.show = show;
+      // 받는 사람이 보는 제목 — 색인의 해석된 제목(별칭 > 요약 한 줄 > AI 제목 > 첫 질문).
+      // 내보낸 파일에는 색인이 없어서, 이걸 안 실으면 첫 질문 원문("…수정하려고 해,")이 보고서 제목이 됐다.
+      const idxTitle = ((await buildIndex())[id] || {}).title || "";
+      out.session = { ...out.session, title: doMask ? maskText(idxTitle, {}) : idxTitle };
+      out.exportedAt = new Date().toISOString();
 
       // 데이터를 JSON script 태그로 임베드(JS 리터럴이 아니라 JSON.parse로 읽음 → 제어문자/줄바꿈/< 안전).
-      // </script> 만 닫힘 방지로 이스케이프.
+      // "<" 를 전부 \u003c 로 바꾼다. </script> 만 막아서는 부족했다 — 데이터에 "<!--<script" 가 있고
+      // 뒤에 "-->" 가 없으면 브라우저가 페이지 끝까지를 스크립트로 읽어 내보낸 파일이 백지가 된다.
       const format = url.searchParams.get("format") === "md" ? "md" : "html";
-      const dataJson = JSON.stringify(out).replace(/<\/script>/gi, "<\\/script>");
+      const dataJson = JSON.stringify(out).replace(/</g, "\\u003c");
       const inject = `<script type="application/json" id="cw-export-data">${dataJson}</script>`;
       // ⚠️ 치환문자열에 데이터($ 포함)를 직접 넣으면 $&·$' 등이 특수 치환으로 해석됨 → 함수 치환으로 회피
-      const titleSrc = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      // 제목·파일명도 가려진 사본에서 뽑는다(첫 질문에 비밀값이 있으면 파일명으로 새 나간다).
+      const titleRaw = (events.find((e) => e.kind === "user_text" && e.text && !e.text.startsWith("[")) || {}).text || "session";
+      const titleSrc = doMask ? maskText(titleRaw, {}) : titleRaw;
       const body = format === "md"
         ? toMarkdown(out, titleSrc.split("\n")[0].slice(0, 80))
         : await inlineVendor(
-          VIEWER.replace("__SESSION_ID__", () => id).replace("</head>", () => inject + "\n</head>")
+          VIEWER.replace("__SESSION_ID__", () => id)
+            // 메신저·파일 미리보기에 뜨는 이름. 고정 문구면 모든 파일이 같은 이름으로 보인다.
+            .replace(/<title>[^<]*<\/title>/, () => `<title>${escHtml(out.session.title || "세션")} · claude-watch</title>`)
+            .replace("</head>", () => inject + "\n</head>")
         );
 
       // 저장 위치·파일명: 사용자가 지정할 수 있고, 비우면 기본값을 쓴다.
@@ -781,6 +826,11 @@ const server = http.createServer(async (req, res) => {
       const dir = rawDir
         ? (rawDir.startsWith("~") ? join(homedir(), rawDir.slice(1)) : rawDir)
         : join(CW_DIR, "exports");
+      // 저장 위치는 홈·설정 폴더·임시 폴더 아래로 제한한다. 아무 절대경로나 받으면 이 라우트가
+      // "임의 위치에 파일 쓰기"가 된다.
+      const abs = resolve(dir);
+      if (![homedir(), CW_DIR, tmpdir()].some((root) => abs === resolve(root) || abs.startsWith(resolve(root) + sep)))
+        return send(res, 400, "application/json; charset=utf-8", JSON.stringify({ error: "저장 위치는 홈 폴더 아래여야 합니다" }));
       await mkdir(dir, { recursive: true });
       const fpath = join(dir, fname);
       await writeFile(fpath, body, "utf8");
@@ -796,7 +846,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   send(res, 404, "text/plain", "not found");
-});
+}
 
 // macOS 네이티브 폴더 선택창. 취소하면 osascript가 1로 끝나므로 canceled 로 구분한다.
 function pickFolder(start) {
@@ -865,6 +915,8 @@ function openInTerminal(app, cmd) {
     });
   });
 }
+
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function send(res, code, type, body) {
   res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-cache" });
@@ -1014,10 +1066,15 @@ const PROMPTS = {
   // 요약 탭의 '한 줄 결론 + 불릿 3개' 형태에 맞춰 JSON으로 받는다.
   summary:
     "다음은 Claude Code 코딩 세션의 작업 기록이다. 한국어로 요약하되 아래 JSON만 출력하라(코드펜스·설명 금지).\n" +
-    "필수 필드는 headline · bullets · narrative 세 개다. 하나라도 빠뜨리면 안 된다.\n\n" +
-    '{"headline":"...","bullets":["...","...","..."],"narrative":"...\\n...\\n..."}\n\n' +
+    "이 요약은 세션에 없던 사람(팀원·PM)이 읽는 보고서의 머리가 된다.\n" +
+    "필수 필드는 headline · goal · status · outcome · bullets · narrative · next 일곱 개다. 하나라도 빠뜨리면 안 된다.\n\n" +
+    '{"headline":"...","goal":"...","status":"done","outcome":"...","bullets":["...","...","..."],"narrative":"...\\n...\\n...","next":["..."]}\n\n' +
     "headline — 이 세션이 결국 무엇을 했는지 한 문장(60자 내외, 명사형 종결 금지)\n" +
-    "bullets  — 왜/무엇을 바꿨는지. 정확히 3개. 파일명·함수명은 그대로 쓰고 군더더기 금지\n" +
+    "goal     — 사용자가 이 세션에서 이루려던 것 한 문장. 사용자의 말에서 뽑는다(네가 한 일이 아니라 요청받은 일)\n" +
+    "status   — done(요청한 일이 끝남) | partial(일부만 끝났거나 확인이 남음) | blocked(막혀서 중단) 중 하나\n" +
+    "outcome  — 지금 어떤 상태로 끝났는지 한 문장. 무엇이 동작하고 무엇이 아직인지. 기록에 근거가 있는 것만 쓴다\n" +
+    "next     — 남은 일. 기록에 실제로 언급된 것만 0~3개(없으면 빈 배열 []). 지어내지 마라\n" +
+    "bullets  — 해결한 내용. 실제로 끝낸 것만(시도만 한 것·남은 것은 next 로). 2~4개. 파일명·함수명은 그대로 쓰고 군더더기 금지\n" +
     "narrative — 6~8줄 서술형. 줄 사이는 \\n 으로 구분한다(배열이 아니라 하나의 문자열).\n" +
     "  이 세션을 처음 보는 사람에게 들려주듯 시간 순으로 쓴다:\n" +
     "    사용자가 무엇을 요청했는지 → 그래서 무엇을 만들었/고쳤는지\n" +
@@ -1044,7 +1101,11 @@ async function runClaude(kind, digest) {
     const killer = setTimeout(() => child.kill("SIGKILL"), 120000);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    child.on("error", (e) => { clearTimeout(killer); reject(e); });
+    child.on("error", (e) => {
+      clearTimeout(killer);
+      // "spawn claude ENOENT" 는 읽는 사람에게 아무 뜻이 없다.
+      reject(e.code === "ENOENT" ? new Error("Claude Code(claude 명령)를 찾지 못했어요. AI 요약은 설치된 Claude Code 로 만들어집니다 — 터미널에서 claude 가 실행되는지 확인해 주세요.") : e);
+    });
     child.on("close", (code) => {
       clearTimeout(killer);
       if (code !== 0) return reject(new Error(err.trim() || `claude exited ${code}`));
@@ -1134,6 +1195,12 @@ async function startArchiving() {
 }
 startArchiving().catch(() => {});
 
+// 포트가 이미 쓰이고 있을 때 스택트레이스 대신 무엇을 하면 되는지 알려준다.
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") console.error(`포트 ${PORT} 를 다른 프로그램이 쓰고 있어요. claude-watch 가 이미 떠 있다면 그대로 쓰시면 되고, 아니면 CW_PORT=4318 처럼 다른 포트를 지정해 주세요.`);
+  else console.error(e.message || e);
+  process.exit(1);
+});
 server.listen(PORT, HOST, () => {
   console.log(`claude-watch listening on http://localhost:${PORT}`);
   if (HOST !== "127.0.0.1" && HOST !== "localhost")
