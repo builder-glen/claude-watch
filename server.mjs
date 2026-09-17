@@ -330,7 +330,8 @@ async function summaryHeadline(id) {
 
 // 카드 계산 방식이 바뀌면 올린다 — 파일이 안 바뀐 세션은 캐시를 재사용하므로, 안 올리면 옛 숫자가 남는다.
 //   2: 토큰·비용을 메시지 단위로 센다(줄 단위 합산은 약 2배로 부풀렸다)
-const INDEX_VERSION = 2;
+//   3: 의사결정 답변의 두 번째 형식(일부만 답하고 되물은 경우)을 읽는다
+const INDEX_VERSION = 3;
 async function buildIndex() {
   const sessions = await findSessions();
   const cached = await readJson(INDEX_PATH, {});
@@ -1065,9 +1066,13 @@ const PROMPTS = {
   // 요약 탭의 '한 줄 결론 + 불릿 3개' 형태에 맞춰 JSON으로 받는다.
   summary:
     "다음은 Claude Code 코딩 세션의 작업 기록이다. 한국어로 요약하되 아래 JSON만 출력하라(코드펜스·설명 금지).\n" +
-    "필수 필드는 headline · bullets · narrative 세 개다. 하나라도 빠뜨리면 안 된다.\n\n" +
-    '{"headline":"...","bullets":["...","...","..."],"narrative":"...\\n...\\n..."}\n\n' +
+    "이 요약은 세션에 없던 사람(팀원·PM)이 읽는 보고서의 머리가 된다.\n" +
+    "필수 필드는 headline · status · outcome · bullets · narrative · next 여섯 개다. 하나라도 빠뜨리면 안 된다.\n\n" +
+    '{"headline":"...","status":"done","outcome":"...","bullets":["...","...","..."],"narrative":"...\\n...\\n...","next":["..."]}\n\n' +
     "headline — 이 세션이 결국 무엇을 했는지 한 문장(60자 내외, 명사형 종결 금지)\n" +
+    "status   — done(요청한 일이 끝남) | partial(일부만 끝났거나 확인이 남음) | blocked(막혀서 중단) 중 하나\n" +
+    "outcome  — 지금 어떤 상태로 끝났는지 한 문장. 무엇이 동작하고 무엇이 아직인지. 기록에 근거가 있는 것만 쓴다\n" +
+    "next     — 남은 일. 기록에 실제로 언급된 것만 0~3개(없으면 빈 배열 []). 지어내지 마라\n" +
     "bullets  — 왜/무엇을 바꿨는지. 정확히 3개. 파일명·함수명은 그대로 쓰고 군더더기 금지\n" +
     "narrative — 6~8줄 서술형. 줄 사이는 \\n 으로 구분한다(배열이 아니라 하나의 문자열).\n" +
     "  이 세션을 처음 보는 사람에게 들려주듯 시간 순으로 쓴다:\n" +

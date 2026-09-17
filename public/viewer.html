@@ -411,6 +411,26 @@ body.pv-sum-agents .agentcard,body.pv-sum-models .legend,body.pv-sum-files .file
 .sechead{display:flex;align-items:baseline;gap:9px}
 .sechead .spacer{flex:1}
 .divider{height:1px;background:var(--line)}
+/* 보고서 머리 — 세션에 없던 사람이 먼저 묻는 것: 어느 프로젝트, 언제, 얼마나, 무엇이 바뀌었나 */
+.rmeta{display:flex;flex-wrap:wrap;gap:6px 8px}
+.rmeta .mi{display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;border-radius:8px;background:var(--block);
+  border:1px solid var(--line-soft);font-size:calc(12.5px * var(--fs) * var(--fs-sum-label,1));color:var(--ink-2)}
+.rmeta .mi b{font-weight:600;color:var(--muted);font-size:.92em}
+.outcome{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:10px;background:var(--block);border:1px solid var(--line-soft)}
+.outcome .st{flex-shrink:0;font-size:calc(11.5px * var(--fs) * var(--fs-sum-label,1));font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.outcome .st.done{color:var(--done);background:rgba(95,207,134,.12)}
+.outcome .st.partial{color:var(--sess);background:rgba(244,248,157,.10)}
+.outcome .st.blocked{color:var(--del);background:rgba(239,125,125,.12)}
+.outcome .tx{font-size:calc(14px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink)}
+.nextbox{display:flex;flex-direction:column;gap:7px}
+.nextbox .nx{display:flex;gap:9px;align-items:flex-start;font-size:calc(13.5px * var(--fs) * var(--fs-sum-body,1));line-height:1.6;color:var(--ink-2)}
+.nextbox .nx i{flex-shrink:0;width:13px;height:13px;margin-top:5px;border-radius:4px;border:1.5px solid var(--muted)}
+.decc.none{color:var(--muted);font-style:normal}
+details.statfold > summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:9px;padding:4px 0}
+details.statfold > summary::-webkit-details-marker{display:none}
+details.statfold > summary::before{content:"▸";color:var(--muted);transition:transform .15s var(--ease)}
+details.statfold[open] > summary::before{transform:rotate(90deg)}
+details.statfold > .statbody{display:flex;flex-direction:column;gap:22px;padding-top:16px}
 .pane{display:flex;flex-direction:column}
 .listbox{border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:hidden}
 .listbox .r{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line)}
@@ -1182,10 +1202,38 @@ function renderSummary() {
         <div style="display:flex;gap:9px;align-items:flex-start">
           ${d.header ? `<span class="dechead">${esc(d.header)}</span>` : ""}
           <span class="decq">${esc(d.question)}</span></div>
-        ${d.chosen ? `<div class="decc">✅ ${esc(d.chosen)}</div>` : ""}</div>`).join("")}</div>
+        ${d.chosen ? `<div class="decc">✅ ${esc(d.chosen)}</div>` : `<div class="decc none">${d.skipped ? "답하지 않고 넘어감" : "선택 기록 없음"}</div>`}</div>`).join("")}</div>
     </div>`);
   }
 
+  // 3) 산출물 — 무엇이 바뀌었나(보고서 본문). 통계보다 위에 둔다.
+  const files = a.files || [];
+  if (files.length) {
+    parts.push(`<div class="divider"></div>`);
+    {
+      const hot = [...files].sort((x, y) => y.touches - x.touches).slice(0, 5);
+      parts.push(`<div class="grid2">
+        <div class="pane" style="gap:10px">
+          <div class="sechead"><div class="seclab">산출물</div><div class="spacer"></div>
+            <div class="secmeta">생성 ${files.filter(f => f.kind === "new").length} · 수정 ${files.filter(f => f.kind === "mod").length}</div></div>
+          <div class="listbox">${files.slice(0, 8).map(f => `<div class="r" data-tip="${esc(shortPath(f.path))}" tabindex="0">
+            <span class="tag ${f.kind}">${f.kind === "new" ? "생성" : f.kind === "del" ? "삭제" : "수정"}</span>
+            <span class="skname">${esc(baseName(f.path))}</span></div>`).join("")}</div>
+        </div>
+        <div class="pane" style="gap:10px">
+          <div class="sechead"><div class="seclab">변경 핫스팟</div><div class="spacer"></div>
+            <div class="secmeta">많이 고친 파일</div></div>
+          <div class="listbox">${hot.map(f => `<div class="r" data-tip="${esc(shortPath(f.path))} · ${f.touches}회 수정" tabindex="0">
+            <span class="sktok">×${f.touches}</span><span class="skname">${esc(baseName(f.path))}</span>
+            <span class="sktok"><span style="color:var(--add)">+${f.add}</span> <span style="color:var(--del)">−${f.del}</span></span></div>`).join("")}</div>
+        </div>
+      </div>`);
+    }
+  }
+
+  // 4) 작업 통계 — 스킬·도구·서브에이전트·모델. "어떻게 돌렸나"는 만든 사람의 관심사라 접어 둔다.
+  //    세션에 없던 사람이 읽는 순서: 결론 → 결과 → 결정 → 산출물. 통계는 그 다음이다.
+  const stat = [];
   // 3) 무엇이 이 세션을 돌렸나 — 스킬 / 도구
   const skills = a.skills || [];
   const skTok = skills.reduce((s, x) => s + x.tokens, 0);
@@ -1193,8 +1241,7 @@ function renderSummary() {
   const maxTool = tools.length ? tools[0].count : 1;
   const TOOLC = { Read: "var(--sonnet)", Edit: "var(--accent)", Write: "var(--accent)", Bash: "var(--sess)",
                   Task: "var(--agent)", Agent: "var(--agent)" };
-  parts.push(`<div class="divider"></div>
-  <div class="grid2">
+  stat.push(`<div class="grid2">
     <div class="pane" style="gap:10px">
       <div class="sechead"><div class="seclab">사용한 스킬 ${skills.length}개</div><div class="spacer"></div>
         <div class="secmeta">${skills.length ? "주입 " + kfmt(skTok) + " tok" : ""}</div></div>
@@ -1223,7 +1270,7 @@ function renderSummary() {
     const done = ags.filter(x => !x.running).length;
     const run = ags.length - done;
     const tok = ags.reduce((s, x) => s + (x.tokens || 0), 0);
-    parts.push(`<div class="pane" style="gap:10px">
+    stat.push(`<div class="pane" style="gap:10px">
       <div class="sechead"><div class="seclab">서브에이전트 ${ags.length}개</div><div class="spacer"></div>
         <div class="secmeta" style="color:var(--agent-muted)">${done} 완료${run ? " · " + run + " 진행" : ""} · ${kfmt(tok)} tok</div></div>
       <div class="agentbox">${ags.map(x => agentRow(x)).join("")}</div>
@@ -1235,7 +1282,7 @@ function renderSummary() {
   if (models.length) {
     const tot = models.reduce((s, m) => s + m.total, 0) || 1;
     const cost = models.reduce((s, m) => s + m.cost, 0);
-    parts.push(`<div class="pane" style="gap:10px">
+    stat.push(`<div class="pane" style="gap:10px">
       <div class="sechead"><div class="seclab">모델 ${models.length}종 · 전환 ${(a.models.switches || []).length}회</div>
         <div class="spacer"></div>
         <div class="secmeta">${tot.toLocaleString()} tok · ${money(cost)}</div></div>
@@ -1245,30 +1292,10 @@ function renderSummary() {
     </div>`);
   }
 
-  // 6) 산출물 (의사결정은 위로 올렸다)
-  const files = a.files || [];
-  if (files.length) {
-    parts.push(`<div class="divider"></div>`);
-    {
-      const hot = [...files].sort((x, y) => y.touches - x.touches).slice(0, 5);
-      parts.push(`<div class="grid2">
-        <div class="pane" style="gap:10px">
-          <div class="sechead"><div class="seclab">산출물</div><div class="spacer"></div>
-            <div class="secmeta">생성 ${files.filter(f => f.kind === "new").length} · 수정 ${files.filter(f => f.kind === "mod").length}</div></div>
-          <div class="listbox">${files.slice(0, 8).map(f => `<div class="r" data-tip="${esc(shortPath(f.path))}" tabindex="0">
-            <span class="tag ${f.kind}">${f.kind === "new" ? "생성" : f.kind === "del" ? "삭제" : "수정"}</span>
-            <span class="skname">${esc(baseName(f.path))}</span></div>`).join("")}</div>
-        </div>
-        <div class="pane" style="gap:10px">
-          <div class="sechead"><div class="seclab">변경 핫스팟</div><div class="spacer"></div>
-            <div class="secmeta">많이 고친 파일</div></div>
-          <div class="listbox">${hot.map(f => `<div class="r" data-tip="${esc(shortPath(f.path))} · ${f.touches}회 수정" tabindex="0">
-            <span class="sktok">×${f.touches}</span><span class="skname">${esc(baseName(f.path))}</span>
-            <span class="sktok"><span style="color:var(--add)">+${f.add}</span> <span style="color:var(--del)">−${f.del}</span></span></div>`).join("")}</div>
-        </div>
-      </div>`);
-    }
-  }
+  if (stat.length) parts.push(`<div class="divider"></div>
+    <details class="statfold" id="statfold"${statOpen() ? " open" : ""}>
+      <summary><span class="seclab">작업 통계</span><span class="secmeta">스킬 · 도구 · 서브에이전트 · 모델 — 이 세션을 어떻게 돌렸나</span></summary>
+      <div class="statbody">${stat.join("")}</div></details>`);
 
   wrap.innerHTML = parts.join("");
   view.appendChild(wrap);
@@ -1280,7 +1307,58 @@ function renderSummary() {
     el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(); } };
   });
 
+  // 펼침 여부는 기억한다(만든 사람은 매번 펼쳐 볼 것이므로)
+  const sf = $("statfold");
+  if (sf) sf.ontoggle = () => { try { localStorage.setItem("cw.statOpen", sf.open ? "1" : "0"); } catch {} };
+
   renderAiSummary();
+}
+const statOpen = () => { try { return localStorage.getItem("cw.statOpen") === "1"; } catch { return false; } };
+
+// 보고서 머리 — AI 없이 로그에서 바로 나오는 사실들.
+// 작업 시간은 기록 간격이 5분을 넘지 않는 구간만 더한다. "첫 기록~마지막 기록"은 며칠씩 열어둔 세션에서
+// 14일 2시간처럼 나와 작업량으로 오해된다.
+function activeMs() {
+  let sum = 0, prev = 0;
+  for (const e of EVENTS) {
+    const t = e.ts ? new Date(e.ts).getTime() : 0;
+    if (!t) continue;
+    if (prev && t > prev && t - prev < 5 * 60 * 1000) sum += t - prev;
+    prev = t;
+  }
+  return sum;
+}
+function reportMeta() {
+  const st = (AGG && AGG.stats) || {}, files = (AGG && AGG.files) || [];
+  const day = (ts) => { const d = new Date(ts); return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`; };
+  const items = [];
+  const proj = ((SESS && (SESS.cwd || SESS.project)) || "").split("/").filter(Boolean).pop();
+  if (proj) items.push(["프로젝트", esc(proj)]);
+  if (st.firstTs) { const a = day(st.firstTs), b = day(st.lastTs || st.firstTs); items.push(["기간", a === b ? a : `${a} – ${b}`]); }
+  const act = activeMs();
+  if (act >= 60000) {
+    const m = Math.round(act / 60000), h = Math.floor(m / 60);
+    items.push(["작업 시간", `약 ${h ? `${h}시간 ${m % 60}분` : `${m}분`}`]);
+  }
+  if (AGG && AGG.turns) items.push(["대화", `${AGG.turns}회`]);
+  if (files.length && exShow("sum.files")) {
+    const add = files.reduce((n, f) => n + (f.add || 0), 0), del = files.reduce((n, f) => n + (f.del || 0), 0);
+    items.push(["바뀐 파일", `${files.length}개 <span style="color:var(--add)">+${add.toLocaleString()}</span> <span style="color:var(--del)">−${del.toLocaleString()}</span>`]);
+  }
+  if (st.commits) items.push(["커밋", `${st.commits}건`]);
+  return items.length ? `<div class="rmeta">${items.map(([k, v]) => `<span class="mi"><b>${k}</b>${v}</span>`).join("")}</div>` : "";
+}
+const STATUS_LABEL = { done: "완료", partial: "일부 완료", blocked: "중단" };
+function outcomeBlock(o) {
+  if (!o || !o.outcome) return "";
+  const st = STATUS_LABEL[o.status] ? o.status : "partial";
+  return `<div class="outcome"><span class="st ${st}">${STATUS_LABEL[st]}</span><span class="tx">${inlineCode(o.outcome)}</span></div>`;
+}
+function nextBlock(o) {
+  const list = (o && Array.isArray(o.next) ? o.next : []).filter(Boolean).slice(0, 3);
+  if (!list.length) return "";
+  return `<div class="pane" style="gap:10px"><div class="sechead"><div class="seclab">남은 일</div></div>
+    <div class="nextbox">${list.map((x) => `<div class="nx"><i></i><span>${inlineCode(x)}</span></div>`).join("")}</div></div>`;
 }
 
 // 대화 탭의 #m<번호> 로 이동. 주소창 해시도 같이 바꿔 뒤로가기로 돌아올 수 있게 한다.
@@ -1332,12 +1410,17 @@ async function renderAiSummary() {
     const foot = (EXPORT || !stale) ? "" :
       `<div class="secmeta">이 요약은 이후 ${EVENTS.length - data.atEventCount}건의 활동을 반영하지 않았습니다
         <span class="lnk" id="aiRegen" style="color:var(--accent);cursor:pointer">⟳ 다시 생성</span></div>`;
+    // 예전에 만든 요약에는 결과·남은 일이 없다 — 다시 만들면 생긴다는 걸 알려준다.
+    const old = (o && o.headline && !o.outcome && !EXPORT) ?
+      `<div class="secmeta">이 요약은 예전 형식이라 '결과'와 '남은 일'이 없어요
+        <span class="lnk" id="aiRegen" style="color:var(--accent);cursor:pointer">⟳ 다시 생성</span></div>` : "";
     if (o && o.headline) {
       box.innerHTML = `<div class="pane" style="gap:22px">
-        <div class="headline">${esc(o.headline)}</div>
+        <div class="pane" style="gap:12px"><div class="headline">${esc(o.headline)}</div>${reportMeta()}</div>
+        ${outcomeBlock(o)}
         <div class="bullets">${(o.bullets || []).slice(0, 3).map(b =>
           `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
-        ${narrativeBlock(o.narrative)}${foot}</div>`;
+        ${narrativeBlock(o.narrative)}${nextBlock(o)}${foot || old}</div>`;
     } else {
       box.innerHTML = `<div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>
         <div class="abody">${md(String(data.text || ""))}</div>${foot}</div>`;
@@ -1348,7 +1431,7 @@ async function renderAiSummary() {
 
   // 토큰 0 자동 요약 — AI 결과가 없거나 만드는 중일 때 보여준다
   const autoPane = (tail) => `<div class="pane" style="gap:14px">
-      <div class="headline">${esc(autoHeadline())}</div>
+      <div class="pane" style="gap:12px"><div class="headline">${esc(autoHeadline())}</div>${reportMeta()}</div>
       <div class="bullets">${autoBullets().map(b => `<div class="bullet"><i></i><span>${inlineCode(b)}</span></div>`).join("")}</div>
       ${tail}</div>`;
 
