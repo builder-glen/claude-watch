@@ -22,8 +22,19 @@ const SETTINGS = process.env.CW_CLAUDE_SETTINGS || join(process.env.CLAUDE_CONFI
 
 const alive = async () => { try { return (await fetch(BASE + "/health", { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } };
 
+const VERSION = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")).version;
+const killServer = () => new Promise((r) => spawn("sh", ["-c", `lsof -tiTCP:${PORT} -sTCP:LISTEN | xargs kill`], { stdio: "ignore" }).on("close", r).on("error", r));
+
 async function ensureServer() {
-  if (await alive()) return;
+  if (await alive()) {
+    // 서버는 분리 기동돼 오래 산다 — 업데이트 뒤에도 옛 코드가 돌고 있으면 새 기능이 조용히 안 보인다.
+    let running = null;
+    try { const r = await fetch(BASE + "/api/version", { signal: AbortSignal.timeout(1500) }); if (r.ok) running = (await r.json()).version; } catch {}
+    if (running === VERSION) return;
+    console.log(`떠 있는 서버(${running || "구버전"})를 ${VERSION} 로 다시 띄웁니다…`);
+    await killServer();
+    for (let i = 0; i < 20 && (await alive()); i++) await new Promise((r) => setTimeout(r, 150));
+  }
   // 터미널을 닫아도 살아 있도록 분리해서 띄운다(statusline.sh 의 자동 기동과 같은 방식).
   spawn(process.execPath, [join(ROOT, "server.mjs")], { detached: true, stdio: "ignore" }).unref();
   for (let i = 0; i < 40; i++) { if (await alive()) return; await new Promise((r) => setTimeout(r, 250)); }
@@ -113,20 +124,36 @@ const commands = {
     const cur = cfg.statusLine && cfg.statusLine.command;
     if (cur && cur.includes("claude-watch") && cur.includes(script)) return console.log("✓ 이미 등록되어 있어요.");
     if (cur && !cur.includes("claude-watch") && flag !== "--force") {
-      console.log(`이미 다른 statusLine 이 있어요:\n  ${cur}\n덮어쓰려면: claude-watch setup --force  (claude-hud 출력은 그대로 유지하고 링크 한 줄만 덧붙입니다)`);
+      console.log(`이미 다른 statusLine 이 있어요:\n  ${cur}\n바꾸려면: claude-watch setup --force\n  기존 statusLine 은 대체됩니다(claude-hud 를 쓰고 있다면 그 출력은 그대로 이어 붙여 유지). 되돌리기: claude-watch unsetup`);
       process.exitCode = 1; return;
     }
     await mkdir(dirname(SETTINGS), { recursive: true });
     const hadFile = Object.keys(cfg).length > 0;
-    if (hadFile) await copyFile(SETTINGS, SETTINGS + ".claude-watch.bak");   // 되돌릴 수 있게 백업
+    // 되돌릴 수 있게 백업 — 처음 한 번만. 다시 돌릴 때 덮어쓰면 "원래 설정"이 사라진다.
+    const BAK = SETTINGS + ".claude-watch.bak";
+    if (hadFile && !(await readFile(BAK, "utf8").then(() => true, () => false))) await copyFile(SETTINGS, BAK);
     cfg.statusLine = { type: "command", command: want };
     await writeFile(SETTINGS, JSON.stringify(cfg, null, 2) + "\n");
     console.log(`✓ statusLine 등록 완료 — Claude Code 를 다시 시작하면 터미널 하단에 뷰어 링크가 떠요.${hadFile ? `\n  (백업: ${SETTINGS}.claude-watch.bak)` : ""}`);
   },
 
+  // setup 을 되돌린다. npm uninstall 전에 돌리지 않으면 statusLine 이 없는 스크립트를 가리킨 채 남는다.
+  async unsetup() {
+    let cfg;
+    try { cfg = JSON.parse(await readFile(SETTINGS, "utf8")); } catch { return console.log("설정 파일이 없어요 — 되돌릴 것이 없습니다."); }
+    const cur = cfg.statusLine && cfg.statusLine.command;
+    if (!cur || !cur.includes("claude-watch")) return console.log("claude-watch 의 statusLine 이 등록돼 있지 않아요.");
+    let before = null;
+    try { before = JSON.parse(await readFile(SETTINGS + ".claude-watch.bak", "utf8")).statusLine || null; } catch {}
+    if (before && !String(before.command || "").includes("claude-watch")) cfg.statusLine = before; else delete cfg.statusLine;
+    await writeFile(SETTINGS, JSON.stringify(cfg, null, 2) + "\n");
+    console.log(before && cfg.statusLine ? `✓ 예전 statusLine 으로 되돌렸어요: ${cfg.statusLine.command}` : "✓ statusLine 등록을 지웠어요.");
+  },
+
   async stop() {
     if (!(await alive())) return console.log("서버가 떠 있지 않아요.");
-    spawn("sh", ["-c", `lsof -tiTCP:${PORT} -sTCP:LISTEN | xargs kill`], { stdio: "ignore" }).on("close", () => console.log("✓ 서버를 종료했어요."));
+    await killServer();
+    console.log("✓ 서버를 종료했어요.");
   },
 
   help() {
@@ -139,6 +166,7 @@ const commands = {
   claude-watch rename <n> "제목"
   claude-watch project <n> "프로젝트명"
   claude-watch setup        Claude Code statusLine 등록 (링크 + 서버 자동 기동)
+  claude-watch unsetup      setup 되돌리기
   claude-watch stop         서버 종료
 
   환경변수: CW_PORT(기본 4317) · CW_HOME(기본 ~/.claude-watch)`);

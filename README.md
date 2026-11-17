@@ -51,7 +51,8 @@ node server.mjs            # 빌드 단계 없음. npm install 필요 없음
 | `cw resume <n>` | n번 세션을 터미널 새 탭에서 이어가기 (`--copy` 는 명령만 출력) |
 | `cw rename <n> "제목"` | 세션 제목 바꾸기 |
 | `cw project <n> "이름"` | 세션의 프로젝트 재지정 |
-| `cw setup` / `cw stop` | statusLine 등록 / 서버 종료 |
+| `cw setup` / `cw unsetup` | statusLine 등록 / 되돌리기 |
+| `cw stop` | 서버 종료 |
 | `CW_PORT=5000 claude-watch` | 포트 변경 |
 
 ## HTTP 엔드포인트
@@ -186,11 +187,14 @@ node server.mjs            # 빌드 단계 없음. npm install 필요 없음
 ## 제거
 
 ```bash
-rm -rf ~/.claude-watch          # 캐시·색인·내보낸 파일
-rm /usr/local/bin/cw            # 심볼릭 링크를 만들었다면
+claude-watch unsetup            # statusLine 등록을 되돌린다 (먼저!)
+claude-watch stop
+npm rm -g @builder-glen/claude-watch
 ```
 
-`~/.claude/settings.json` 의 `statusLine` 항목도 지우세요.
+`~/.claude-watch/` 는 자동으로 지우지 않습니다. **지우기 전에 `~/.claude-watch/archive/` 를 확인하세요** —
+Claude Code 가 30일 뒤 원본을 지운 세션은 그 보관본이 **유일한 사본**입니다. 내보낸 파일(`exports/`)도 여기 있습니다.
+캐시·색인만 지우려면 `rm -rf ~/.claude-watch/cache ~/.claude-watch/index.json`.
 
 ### 개발 시 주의점
 
